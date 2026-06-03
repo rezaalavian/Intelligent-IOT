@@ -1,0 +1,22 @@
+name: Intelligent-IOT-blackwell
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scikit-learn
+  - xgboost
+  - mlflow
+  - joblib
+  # PyTorch and CUDA will be installed after env creation. We avoid pinning
+  # `pytorch-cuda` here because some channels/platforms do not provide it.
+  # The installer script will attempt a conda install, and fall back to the
+  # nightly pip wheel for CUDA 12.8 if necessary.
+  - pip:
+    - torchmetrics
+    - tqdm

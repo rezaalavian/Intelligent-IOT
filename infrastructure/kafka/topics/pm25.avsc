@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "pm25",
+  "namespace": "intelligent.iot",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "timestamp", "type": "string"},
+    {"name": "city_name", "type": ["null", "string"], "default": null},
+    {"name": "pm2", "type": ["null", "double"], "default": null},
+    {"name": "latitude", "type": ["null", "double"], "default": null},
+    {"name": "longitude", "type": ["null", "double"], "default": null},
+    {"name": "source", "type": ["null", "string"], "default": null}
+  ]
+}

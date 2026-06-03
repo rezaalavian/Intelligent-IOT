@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "SensorRecord",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "timestamp", "type": "string"},
+    {"name": "pm25", "type": ["null","double"], "default": null},
+    {"name": "pm10", "type": ["null","double"], "default": null},
+    {"name": "no2", "type": ["null","double"], "default": null},
+    {"name": "temperature", "type": ["null","double"], "default": null},
+    {"name": "humidity", "type": ["null","double"], "default": null}
+  ]
+}

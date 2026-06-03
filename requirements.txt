@@ -1,0 +1,28 @@
+kafka-python==2.0.2
+confluent-kafka==2.5.3
+avro-python3==1.10.2
+pykrige==1.7.2
+fastapi==0.112.2
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+python-dotenv==1.0.1
+requests==2.32.3
+orjson==3.10.7
+networkx==3.3
+pyarrow==16.1.0
+joblib==1.4.2
+matplotlib==3.9.2
+seaborn==0.13.2
+pytest==8.3.2
+pytest-cov==5.0.0
+black==24.8.0
+ruff==0.6.3
+jupyterlab==4.2.4
+ipykernel==6.29.5
+scikit-learn==1.5.1
+lightgbm==4.5.0
+tensorflow==2.17.0
+torch-geometric==2.5.3
+# Apache Flink is an external runtime dependency; install the Flink distribution separately
+# or use the local offline feature-engineering stubs in analytics/flink_jobs/ for the demo.
+# PyTorch stack is managed in environment.yml for GPU support and CUDA pinning.
