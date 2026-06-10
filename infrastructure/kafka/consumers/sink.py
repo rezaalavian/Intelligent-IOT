@@ -35,7 +35,7 @@ def append_record(base_dir: str, rec: dict) -> None:
 
 
 def run() -> None:  # pragma: no cover - integration path
-    from confluent_kafka import Consumer
+    from confluent_kafka import Consumer, Producer
     from confluent_kafka.schema_registry import SchemaRegistryClient
     from confluent_kafka.schema_registry.avro import AvroDeserializer
     from confluent_kafka.serialization import SerializationContext, MessageField
@@ -48,6 +48,7 @@ def run() -> None:  # pragma: no cover - integration path
     consumer = Consumer({"bootstrap.servers": cfg.bootstrap_servers,
                          "group.id": cfg.group_ids["sink"],
                          "auto.offset.reset": "earliest", "enable.auto.commit": False})
+    dlq = Producer({"bootstrap.servers": cfg.bootstrap_servers})
     topic = cfg.topics["measurements"]
     consumer.subscribe([topic])
     try:
@@ -59,9 +60,19 @@ def run() -> None:  # pragma: no cover - integration path
                 rec = deser(msg.value(), SerializationContext(topic, MessageField.VALUE))
                 append_record(cfg.sink_dir, rec)
             except Exception as exc:
-                log.error("skipping bad message offset=%s err=%s", msg.offset(), exc)
+                log.error("routing bad message to DLQ topic=%s offset=%s err=%s", topic, msg.offset(), exc)
+                import base64, json
+                raw_val = msg.value()
+                dlq.produce(cfg.topics["deadletter"], key=msg.key(), value=json.dumps({
+                    "source_topic": topic,
+                    "offset": msg.offset(),
+                    "error": str(exc),
+                    "value_b64": base64.b64encode(raw_val).decode() if raw_val is not None else None,
+                }).encode())
+                dlq.poll(0)
             consumer.commit(msg)
     finally:
+        dlq.flush(10.0)
         consumer.close()
 
 

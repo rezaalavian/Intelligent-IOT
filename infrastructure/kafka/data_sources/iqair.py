@@ -1,9 +1,12 @@
 from pathlib import Path
 from datetime import datetime
+import logging
 import re
 import time
 import pandas as pd
 import requests
+
+log = logging.getLogger(__name__)
 
 
 IQAIR_CITY_URL = "https://www.iqair.com/canada/ontario/{slug}"
@@ -70,3 +73,15 @@ def scrape_pm25_cities(input_csv: str | Path, output_csv: str | Path, pause: flo
     out.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(out, index=False)
     return out
+
+
+def poll(*args, **kwargs) -> list[dict]:
+    """Live IQAir polling is not enabled in Phase 1.
+
+    IQAir has no free realtime measurement API and HTML scraping is ToS-fragile,
+    so it is a manual fallback only (see scrape_pm25_cities). The raw topic and
+    schema (iqair_raw.avsc) exist as forward-compatible wiring; this returns no
+    records so the ingestion loop treats IQAir as a disabled source.
+    """
+    log.info("IQAir live poll is disabled in Phase 1; returning no records")
+    return []

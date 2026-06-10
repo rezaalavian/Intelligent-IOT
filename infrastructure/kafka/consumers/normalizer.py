@@ -80,6 +80,7 @@ def run() -> None:  # pragma: no cover - integration path
                          "auto.offset.reset": "earliest", "enable.auto.commit": False})
     consumer.subscribe([cfg.raw_topic(s) for s in SOURCES])
     out = Producer({"bootstrap.servers": cfg.bootstrap_servers})
+    dlq = Producer({"bootstrap.servers": cfg.bootstrap_servers})
     out_topic = cfg.topics["measurements"]
     try:
         while True:
@@ -95,10 +96,20 @@ def run() -> None:  # pragma: no cover - integration path
                             value=out_ser(rec, SerializationContext(out_topic, MessageField.VALUE)))
                 out.poll(0)
             except Exception as exc:
-                log.error("skipping bad message topic=%s offset=%s err=%s", topic, msg.offset(), exc)
+                log.error("routing bad message to DLQ topic=%s offset=%s err=%s", topic, msg.offset(), exc)
+                import base64, json
+                raw_val = msg.value()
+                dlq.produce(cfg.topics["deadletter"], key=msg.key(), value=json.dumps({
+                    "source_topic": topic,
+                    "offset": msg.offset(),
+                    "error": str(exc),
+                    "value_b64": base64.b64encode(raw_val).decode() if raw_val is not None else None,
+                }).encode())
+                dlq.poll(0)
             consumer.commit(msg)
     finally:
         out.flush(10.0)
+        dlq.flush(10.0)
         consumer.close()
 
 

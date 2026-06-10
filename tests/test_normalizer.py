@@ -40,6 +40,14 @@ def test_envcanada_raw_normalizes_weather():
     assert rec["pm25"] is None
 
 
+def test_iqair_raw_normalizes_pm25():
+    raw = {"station_id": "iqair-toronto", "datetime_utc": "2023-01-01T14:00:00Z", "pm25": 7.5}
+    rec = nm.normalize("iqair", raw)
+    assert rec["pm25"] == 7.5
+    assert rec["station_id"] == "iqair-toronto"
+    assert rec["temperature"] is None
+
+
 def test_dedup_key_and_same_hour_collapse():
     a = {"station_id": "s", "source": "openaq",
          "timestamp": datetime(2023, 1, 1, 14, 0, tzinfo=timezone.utc), "pm25": 1.0}
