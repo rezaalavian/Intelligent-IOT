@@ -19,7 +19,12 @@ def schema_str(name: str) -> str:
 
 
 def to_utc(value) -> datetime:
-    """Parse an ISO8601 string or datetime into a tz-aware UTC datetime."""
+    """Parse an ISO8601 string or datetime into a tz-aware UTC datetime.
+
+    Naive (timezone-less) inputs are *assumed* to already be UTC. The live
+    sources used by this pipeline (OpenAQ `datetime.utc`, SWOB `date_tm`) emit
+    UTC, so this holds; pass tz-aware values if a source ever reports local time.
+    """
     if isinstance(value, datetime):
         dt = value
     else:
@@ -31,6 +36,10 @@ def to_utc(value) -> datetime:
 
 
 def floor_to_hour(dt: datetime) -> datetime:
+    """Truncate to the start of the hour, preserving the input's timezone.
+
+    Call after `to_utc` so the hour boundary is in UTC.
+    """
     return dt.replace(minute=0, second=0, microsecond=0)
 
 
