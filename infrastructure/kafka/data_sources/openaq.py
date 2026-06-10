@@ -121,3 +121,90 @@ def fetch_openaq_location_ml(location_id: int, start_date: str, output_dir: str 
     ml_df.to_csv(ML_CSV)
 
     return ML_CSV
+
+
+# ---------------------------------------------------------------------------
+# OpenAQ v3 live poll client
+# ---------------------------------------------------------------------------
+import os
+import time
+import logging
+
+V3_BASE = "https://api.openaq.org/v3"
+log = logging.getLogger(__name__)
+
+
+def _build_sensor_map(locations_payload: dict):
+    results = locations_payload.get("results") or []
+    if not results:
+        return {}, (None, None)
+    loc = results[0]
+    smap = {
+        s["id"]: s["parameter"]["name"]
+        for s in loc.get("sensors", [])
+        if s.get("parameter", {}).get("name")
+    }
+    coords = loc.get("coordinates") or {}
+    return smap, (coords.get("latitude"), coords.get("longitude"))
+
+
+def _latest_to_raw(location_id: int, smap: dict, coords, latest_payload: dict) -> list[dict]:
+    lat, lon = coords
+    out = []
+    for r in latest_payload.get("results", []):
+        sid = r.get("sensorsId")
+        param = smap.get(sid)
+        if param is None:
+            continue  # unknown sensor; can't map to a canonical column
+        out.append({
+            "station_id": f"openaq-{location_id}",
+            "sensor_id": sid,
+            "parameter": param,
+            "value": r.get("value"),
+            "datetime_utc": (r.get("datetime") or {}).get("utc"),
+            "latitude": lat,
+            "longitude": lon,
+        })
+    return out
+
+
+def _dedup(records: list[dict]) -> list[dict]:
+    seen, out = set(), []
+    for r in records:
+        key = (r.get("sensor_id"), r.get("datetime_utc"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
+def _get(session, url, headers, max_attempts=4):
+    delay = 1.0
+    for attempt in range(max_attempts):
+        resp = session.get(url, headers=headers, timeout=30)
+        if resp.status_code == 429:
+            reset = float(resp.headers.get("x-ratelimit-reset", delay))
+            time.sleep(min(reset, 30.0))
+            delay *= 2
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    raise RuntimeError(f"OpenAQ request failed after {max_attempts} attempts: {url}")
+
+
+def poll(location_ids, api_key: str | None = None, session=None) -> list[dict]:
+    """Return source-raw OpenAQ records for the given location ids."""
+    api_key = api_key or os.getenv("OPENAQ_API_KEY")
+    if not api_key:
+        log.warning("OPENAQ_API_KEY not set; OpenAQ source disabled")
+        return []
+    session = session or requests.Session()
+    headers = {"X-API-Key": api_key}
+    records: list[dict] = []
+    for loc_id in location_ids:
+        locs = _get(session, f"{V3_BASE}/locations/{loc_id}", headers)
+        smap, coords = _build_sensor_map(locs)
+        latest = _get(session, f"{V3_BASE}/locations/{loc_id}/latest", headers)
+        records.extend(_latest_to_raw(loc_id, smap, coords, latest))
+    return _dedup(records)
