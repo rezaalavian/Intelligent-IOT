@@ -17,7 +17,7 @@ class BaseProducer:
     """Avro-serializing producer. Serializes before produce so failures route to a
     plain-text dead-letter producer (never re-Avro'd)."""
 
-    def __init__(self, main_producer, dlq_producer, serializer, dlq_topic: str,
+    def __init__(self, main_producer, dlq_producer, serializer=None, dlq_topic: str = "",
                  key_field: str = "station_id"):
         self._main = main_producer
         self._dlq = dlq_producer
@@ -25,10 +25,15 @@ class BaseProducer:
         self._dlq_topic = dlq_topic
         self._key_field = key_field
 
-    def produce(self, topic: str, record: dict) -> None:
+    def _extract_key(self, record: dict) -> bytes:
         if self._key_field not in record:
             log.warning("record missing key field %r; using empty partition key", self._key_field)
-        key = str(record.get(self._key_field, "")).encode()
+        return str(record.get(self._key_field, "")).encode()
+
+    def produce(self, topic: str, record: dict) -> None:
+        if self._serialize is None:
+            raise NotImplementedError("BaseProducer requires a serializer; subclasses may override produce()")
+        key = self._extract_key(record)
         try:
             value = self._serialize(record, None)
         except SerializationError as exc:

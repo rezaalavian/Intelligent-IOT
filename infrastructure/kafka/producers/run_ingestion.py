@@ -10,7 +10,8 @@ from confluent_kafka.schema_registry.avro import AvroSerializer
 from ..config import load_config
 from ..serialization import schema_str
 from ..data_sources import openaq, environment_canada
-from .base import BaseProducer
+from confluent_kafka.serialization import SerializationContext, MessageField, SerializationError
+from .base import BaseProducer, _on_delivery
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -49,26 +50,22 @@ def _build_producer(cfg) -> BaseProducer:
             conf={"auto.register.schemas": False, "use.latest.version": True},
         )
 
-    def serialize(record, ctx):
-        raise RuntimeError("use topic-bound serializer")
-
     main = Producer({"bootstrap.servers": cfg.bootstrap_servers})
     dlq = Producer({"bootstrap.servers": cfg.bootstrap_servers})
 
     class _Routed(BaseProducer):
         def produce(self, topic, record):
-            from confluent_kafka.serialization import SerializationContext, MessageField, SerializationError
             ser = serializers[topic]
-            key = str(record.get("station_id", "")).encode()
+            key = self._extract_key(record)
             try:
                 value = ser(record, SerializationContext(topic, MessageField.VALUE))
             except SerializationError as exc:
                 self._to_dlq(topic, record, str(exc))
                 return
-            self._main.produce(topic, key=key, value=value)
+            self._main.produce(topic, key=key, value=value, on_delivery=_on_delivery)
             self._main.poll(0)
 
-    return _Routed(main_producer=main, dlq_producer=dlq, serializer=serialize,
+    return _Routed(main_producer=main, dlq_producer=dlq, serializer=None,
                    dlq_topic=cfg.topics["deadletter"])
 
 
