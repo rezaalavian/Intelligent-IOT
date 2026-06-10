@@ -58,7 +58,6 @@ def collapse_same_hour(records: list[dict]) -> list[dict]:
 
 
 def run() -> None:  # pragma: no cover - integration path
-    from datetime import datetime, timezone
     from confluent_kafka import Consumer, Producer
     from confluent_kafka.schema_registry import SchemaRegistryClient
     from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
@@ -88,12 +87,15 @@ def run() -> None:  # pragma: no cover - integration path
             if msg is None or msg.error():
                 continue
             topic = msg.topic()
-            raw = deser[topic](msg.value(), SerializationContext(topic, MessageField.VALUE))
-            source = topic_to_source[topic]
-            rec = normalize(source, raw, ingested_at=datetime.now(timezone.utc))
-            out.produce(out_topic, key=rec["station_id"].encode(),
-                        value=out_ser(rec, SerializationContext(out_topic, MessageField.VALUE)))
-            out.poll(0)
+            try:
+                raw = deser[topic](msg.value(), SerializationContext(topic, MessageField.VALUE))
+                source = topic_to_source[topic]
+                rec = normalize(source, raw, ingested_at=datetime.now(timezone.utc))
+                out.produce(out_topic, key=rec["station_id"].encode(),
+                            value=out_ser(rec, SerializationContext(out_topic, MessageField.VALUE)))
+                out.poll(0)
+            except Exception as exc:
+                log.error("skipping bad message topic=%s offset=%s err=%s", topic, msg.offset(), exc)
             consumer.commit(msg)
     finally:
         out.flush(10.0)

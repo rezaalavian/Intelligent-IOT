@@ -55,8 +55,11 @@ def run() -> None:  # pragma: no cover - integration path
             msg = consumer.poll(1.0)
             if msg is None or msg.error():
                 continue
-            rec = deser(msg.value(), SerializationContext(topic, MessageField.VALUE))
-            append_record(cfg.sink_dir, rec)
+            try:
+                rec = deser(msg.value(), SerializationContext(topic, MessageField.VALUE))
+                append_record(cfg.sink_dir, rec)
+            except Exception as exc:
+                log.error("skipping bad message offset=%s err=%s", msg.offset(), exc)
             consumer.commit(msg)
     finally:
         consumer.close()
