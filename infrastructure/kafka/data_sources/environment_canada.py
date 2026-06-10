@@ -124,13 +124,28 @@ def scrape_environment_canada(climate_id: str, province: str, start_year: int, e
 GEOMET_BASE = "https://api.weather.gc.ca/collections/swob-realtime/items"
 log = logging.getLogger(__name__)
 
-# canonical raw field -> SWOB property base name
+# canonical raw field -> ordered SWOB property base-name candidates.
+# SWOB stations report under different instrument/averaging variants (10m
+# anemometer at 1/2/10-minute averages, precip-gauge wind, etc.), so each
+# canonical field tries candidates in priority order and takes the first present.
 _SWOB_FIELDS = {
-    "air_temp": "air_temp",
-    "rel_hum": "rel_hum",
-    "wind_speed": "avg_wnd_spd_10m_pst1mt",
-    "wind_dir": "avg_wnd_dir_10m_pst1mt",
-    "pressure": "stn_pres",
+    "air_temp": ["air_temp"],
+    "rel_hum": ["rel_hum"],
+    "wind_speed": [
+        "avg_wnd_spd_10m_pst1mt",
+        "avg_wnd_spd_10m_pst2mts",
+        "avg_wnd_spd_10m_pst10mts",
+        "avg_wnd_spd_10m_pst1hr",
+        "avg_wnd_spd_pcpn_gag_pst1mt",
+        "avg_wnd_spd_pcpn_gag_pst10mts",
+    ],
+    "wind_dir": [
+        "avg_wnd_dir_10m_pst1mt",
+        "avg_wnd_dir_10m_pst2mts",
+        "avg_wnd_dir_10m_pst10mts",
+        "avg_wnd_dir_10m_pst1hr",
+    ],
+    "pressure": ["stn_pres"],
 }
 
 
@@ -159,12 +174,17 @@ def _feature_to_raw(feature: dict, min_qa: float = 0.0) -> dict:
         "latitude": lat,
         "longitude": lon,
     }
-    for canon, base in _SWOB_FIELDS.items():
-        val = _to_float(_prop(props, base))
-        qa = _to_float(props.get(f"{base}-qa"))
-        if val is not None and qa is not None and qa < min_qa:
-            val = None
-        rec[canon] = val
+    for canon, candidates in _SWOB_FIELDS.items():
+        rec[canon] = None
+        for base in candidates:
+            val = _to_float(_prop(props, base))
+            if val is None:
+                continue
+            qa = _to_float(props.get(f"{base}-qa"))
+            if qa is not None and qa < min_qa:
+                continue
+            rec[canon] = val
+            break
     return rec
 
 
