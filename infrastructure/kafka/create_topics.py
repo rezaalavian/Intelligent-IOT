@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from confluent_kafka import KafkaException, KafkaError
 from confluent_kafka.admin import AdminClient, NewTopic
 
 from .config import load_config, SOURCES
@@ -21,8 +22,12 @@ def main() -> None:
         try:
             fut.result()
             log.info("created topic %s", name)
-        except Exception as exc:  # already exists, etc.
-            log.info("topic %s: %s", name, exc)
+        except KafkaException as exc:
+            if exc.args[0].code() == KafkaError.TOPIC_ALREADY_EXISTS:
+                log.info("topic %s already exists, skipping", name)
+            else:
+                log.error("failed to create topic %s: %s", name, exc)
+                raise
 
 
 if __name__ == "__main__":
