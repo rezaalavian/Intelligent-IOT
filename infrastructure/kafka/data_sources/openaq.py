@@ -1,9 +1,16 @@
 import gzip
+import logging
+import os
 import shutil
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
+
 import pandas as pd
 import requests
+
+V3_BASE = "https://api.openaq.org/v3"
+log = logging.getLogger(__name__)
 
 
 def fetch_openaq_location_ml(location_id: int, start_date: str, output_dir: str | Path):
@@ -126,15 +133,9 @@ def fetch_openaq_location_ml(location_id: int, start_date: str, output_dir: str 
 # ---------------------------------------------------------------------------
 # OpenAQ v3 live poll client
 # ---------------------------------------------------------------------------
-import os
-import time
-import logging
-
-V3_BASE = "https://api.openaq.org/v3"
-log = logging.getLogger(__name__)
 
 
-def _build_sensor_map(locations_payload: dict):
+def _build_sensor_map(locations_payload: dict) -> tuple[dict, tuple]:
     results = locations_payload.get("results") or []
     if not results:
         return {}, (None, None)
