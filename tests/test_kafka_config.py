@@ -24,3 +24,17 @@ def test_env_override(monkeypatch):
     c = cfg.load_config()
     assert c.bootstrap_servers == "broker:1234"
     assert c.openaq_api_key == "abc"
+
+
+def test_partitions_env_override(monkeypatch):
+    monkeypatch.setenv("KAFKA_PARTITIONS", "5")
+    import infrastructure.kafka.config as cfg
+    importlib.reload(cfg)
+    assert cfg.load_config().partitions == 5
+
+
+def test_location_ids_parsing(monkeypatch):
+    monkeypatch.setenv("OPENAQ_LOCATION_IDS", "100,200,300")
+    import infrastructure.kafka.config as cfg
+    importlib.reload(cfg)
+    assert cfg.load_config().openaq_location_ids == (100, 200, 300)

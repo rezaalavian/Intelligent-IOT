@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from types import MappingProxyType
 
 try:
     from dotenv import load_dotenv
@@ -9,7 +10,7 @@ try:
 except Exception:
     pass
 
-SOURCES = ("openaq", "envcanada", "iqair")
+SOURCES: tuple[str, ...] = ("openaq", "envcanada", "iqair")
 
 
 @dataclass(frozen=True)
@@ -40,15 +41,15 @@ def load_config() -> KafkaConfig:
         bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP", "localhost:9092"),
         schema_registry_url=os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081"),
         partitions=int(os.getenv("KAFKA_PARTITIONS", "3")),
-        topics=topics,
-        poll_intervals={s: int(os.getenv(f"POLL_INTERVAL_{s.upper()}", "300")) for s in SOURCES},
-        group_ids={
+        topics=MappingProxyType(topics),
+        poll_intervals=MappingProxyType({s: int(os.getenv(f"POLL_INTERVAL_{s.upper()}", "300")) for s in SOURCES}),
+        group_ids=MappingProxyType({
             "normalizer": os.getenv("GROUP_NORMALIZER", "aq-normalizer"),
             "sink": os.getenv("GROUP_SINK", "aq-sink"),
-        },
+        }),
         openaq_api_key=os.getenv("OPENAQ_API_KEY"),
         openaq_location_ids=tuple(
-            int(x) for x in os.getenv("OPENAQ_LOCATION_IDS", "7570").split(",") if x.strip()
+            int(x) for x in os.getenv("OPENAQ_LOCATION_IDS", "7570").split(",") if x.strip()  # 7570 is the default OpenAQ monitoring location id
         ),
         envcanada_bbox=os.getenv("ENVCANADA_BBOX", "-80.0,43.0,-78.0,44.5"),
         sink_dir=os.getenv("SINK_DIR", "data/stream/measurements"),
