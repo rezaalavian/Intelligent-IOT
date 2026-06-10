@@ -55,3 +55,50 @@ def dedup_key(rec: dict) -> str:
 def collapse_same_hour(records: list[dict]) -> list[dict]:
     by_key = {dedup_key(r): r for r in records}  # later wins
     return list(by_key.values())
+
+
+def run() -> None:  # pragma: no cover - integration path
+    from datetime import datetime, timezone
+    from confluent_kafka import Consumer, Producer
+    from confluent_kafka.schema_registry import SchemaRegistryClient
+    from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
+    from confluent_kafka.serialization import SerializationContext, MessageField
+    from ..config import load_config, SOURCES
+    from ..serialization import schema_str
+
+    cfg = load_config()
+    sr = SchemaRegistryClient({"url": cfg.schema_registry_url})
+    deser = {
+        cfg.raw_topic("openaq"): AvroDeserializer(sr, schema_str("openaq_raw.avsc")),
+        cfg.raw_topic("envcanada"): AvroDeserializer(sr, schema_str("envcanada_raw.avsc")),
+        cfg.raw_topic("iqair"): AvroDeserializer(sr, schema_str("iqair_raw.avsc")),
+    }
+    topic_to_source = {cfg.raw_topic(s): s for s in SOURCES}
+    out_ser = AvroSerializer(sr, schema_str("measurement.avsc"),
+                             conf={"auto.register.schemas": False, "use.latest.version": True})
+    consumer = Consumer({"bootstrap.servers": cfg.bootstrap_servers,
+                         "group.id": cfg.group_ids["normalizer"],
+                         "auto.offset.reset": "earliest", "enable.auto.commit": False})
+    consumer.subscribe([cfg.raw_topic(s) for s in SOURCES])
+    out = Producer({"bootstrap.servers": cfg.bootstrap_servers})
+    out_topic = cfg.topics["measurements"]
+    try:
+        while True:
+            msg = consumer.poll(1.0)
+            if msg is None or msg.error():
+                continue
+            topic = msg.topic()
+            raw = deser[topic](msg.value(), SerializationContext(topic, MessageField.VALUE))
+            source = topic_to_source[topic]
+            rec = normalize(source, raw, ingested_at=datetime.now(timezone.utc))
+            out.produce(out_topic, key=rec["station_id"].encode(),
+                        value=out_ser(rec, SerializationContext(out_topic, MessageField.VALUE)))
+            out.poll(0)
+            consumer.commit(msg)
+    finally:
+        out.flush(10.0)
+        consumer.close()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    run()
