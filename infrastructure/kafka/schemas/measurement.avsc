@@ -1,0 +1,26 @@
+{
+  "type": "record",
+  "name": "Measurement",
+  "namespace": "intelligent.iot",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "source", "type": "string"},
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "ingested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "latitude", "type": ["null", "double"], "default": null},
+    {"name": "longitude", "type": ["null", "double"], "default": null},
+    {"name": "pm25", "type": ["null", "double"], "default": null},
+    {"name": "pm10", "type": ["null", "double"], "default": null},
+    {"name": "no", "type": ["null", "double"], "default": null},
+    {"name": "no2", "type": ["null", "double"], "default": null},
+    {"name": "nox", "type": ["null", "double"], "default": null},
+    {"name": "so2", "type": ["null", "double"], "default": null},
+    {"name": "co", "type": ["null", "double"], "default": null},
+    {"name": "o3", "type": ["null", "double"], "default": null},
+    {"name": "temperature", "type": ["null", "double"], "default": null},
+    {"name": "humidity", "type": ["null", "double"], "default": null},
+    {"name": "wind_speed", "type": ["null", "double"], "default": null},
+    {"name": "wind_dir", "type": ["null", "double"], "default": null},
+    {"name": "pressure", "type": ["null", "double"], "default": null}
+  ]
+}

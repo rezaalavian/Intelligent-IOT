@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "EnvCanadaRaw",
+  "namespace": "intelligent.iot.raw",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "datetime_utc", "type": ["null", "string"], "default": null},
+    {"name": "latitude", "type": ["null", "double"], "default": null},
+    {"name": "longitude", "type": ["null", "double"], "default": null},
+    {"name": "air_temp", "type": ["null", "double"], "default": null},
+    {"name": "rel_hum", "type": ["null", "double"], "default": null},
+    {"name": "wind_speed", "type": ["null", "double"], "default": null},
+    {"name": "wind_dir", "type": ["null", "double"], "default": null},
+    {"name": "pressure", "type": ["null", "double"], "default": null}
+  ]
+}
