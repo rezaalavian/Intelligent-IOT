@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +12,10 @@ log = logging.getLogger(__name__)
 
 
 def partition_path(base_dir: str, rec: dict) -> str:
-    date = rec["timestamp"].strftime("%Y-%m-%d")
+    ts = rec["timestamp"]
+    if not isinstance(ts, datetime):
+        raise TypeError(f"rec['timestamp'] must be a datetime, got {type(ts).__name__}")
+    date = ts.strftime("%Y-%m-%d")
     return str(Path(base_dir) / f"date={date}" / "part.parquet")
 
 
