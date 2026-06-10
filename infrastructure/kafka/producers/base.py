@@ -26,6 +26,8 @@ class BaseProducer:
         self._key_field = key_field
 
     def produce(self, topic: str, record: dict) -> None:
+        if self._key_field not in record:
+            log.warning("record missing key field %r; using empty partition key", self._key_field)
         key = str(record.get(self._key_field, "")).encode()
         try:
             value = self._serialize(record, None)
