@@ -1,6 +1,6 @@
-import os
 import socket
 import time
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -52,7 +52,8 @@ def test_end_to_end_mock_record_lands_in_sink(stack, tmp_path):
     p.flush(10)
 
     deser = AvroDeserializer(sr, schema_str("measurement.avsc"))
-    c = Consumer({"bootstrap.servers": cfg.bootstrap_servers, "group.id": "it-test",
+    c = Consumer({"bootstrap.servers": cfg.bootstrap_servers,
+                  "group.id": f"it-test-{uuid.uuid4()}",
                   "auto.offset.reset": "earliest"})
     c.subscribe([topic])
     deadline = time.time() + 30
