@@ -40,7 +40,8 @@ def test_end_to_end_mock_record_lands_in_sink(stack, tmp_path):
     ser = AvroSerializer(sr, schema_str("measurement.avsc"),
                          conf={"auto.register.schemas": False, "use.latest.version": True})
     topic = cfg.topics["measurements"]
-    rec = {"station_id": "it-1", "source": "mock",
+    station = f"it-{uuid.uuid4()}"  # unique so we can find OUR record amid any other topic data
+    rec = {"station_id": station, "source": "mock",
            "timestamp": datetime(2023, 1, 1, 14, 0, tzinfo=timezone.utc),
            "ingested_at": datetime.now(timezone.utc),
            "latitude": None, "longitude": None, "pm25": 9.9, "pm10": None,
@@ -48,7 +49,7 @@ def test_end_to_end_mock_record_lands_in_sink(stack, tmp_path):
            "temperature": None, "humidity": None, "wind_speed": None,
            "wind_dir": None, "pressure": None}
     p = Producer({"bootstrap.servers": cfg.bootstrap_servers})
-    p.produce(topic, key=b"it-1", value=ser(rec, SerializationContext(topic, MessageField.VALUE)))
+    p.produce(topic, key=station.encode(), value=ser(rec, SerializationContext(topic, MessageField.VALUE)))
     p.flush(10)
 
     deser = AvroDeserializer(sr, schema_str("measurement.avsc"))
@@ -61,8 +62,10 @@ def test_end_to_end_mock_record_lands_in_sink(stack, tmp_path):
     while time.time() < deadline:
         msg = c.poll(1.0)
         if msg and not msg.error():
-            got = deser(msg.value(), SerializationContext(topic, MessageField.VALUE))
-            break
+            candidate = deser(msg.value(), SerializationContext(topic, MessageField.VALUE))
+            if candidate["station_id"] == station:  # ignore any other records on the topic
+                got = candidate
+                break
     c.close()
     assert got is not None and got["pm25"] == 9.9
     assert got["timestamp"] == rec["timestamp"]
