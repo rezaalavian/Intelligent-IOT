@@ -1,6 +1,18 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from infrastructure.kafka.consumers import normalizer as nm
+
+
+def test_unknown_source_raises():
+    with pytest.raises(ValueError, match="unknown source"):
+        nm.normalize("foobar", {"station_id": "x", "datetime_utc": "2023-01-01T00:00:00Z"})
+
+
+def test_missing_required_field_raises_value_error():
+    with pytest.raises(ValueError, match="missing required field"):
+        nm.normalize("openaq", {"parameter": "pm25", "value": 1.0})
 
 
 def test_openaq_raw_normalizes_to_canonical():

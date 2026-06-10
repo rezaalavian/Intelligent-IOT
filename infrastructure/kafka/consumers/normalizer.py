@@ -20,9 +20,12 @@ def _blank() -> dict:
 
 def normalize(source: str, raw: dict, ingested_at: datetime | None = None) -> dict:
     rec = _blank()
-    rec["station_id"] = raw["station_id"]
+    try:
+        rec["station_id"] = raw["station_id"]
+        rec["timestamp"] = floor_to_hour(to_utc(raw["datetime_utc"]))
+    except KeyError as exc:
+        raise ValueError(f"[{source}] raw record missing required field: {exc}") from exc
     rec["source"] = source
-    rec["timestamp"] = floor_to_hour(to_utc(raw["datetime_utc"]))
     rec["ingested_at"] = ingested_at or datetime.now(timezone.utc)
     rec["latitude"] = raw.get("latitude")
     rec["longitude"] = raw.get("longitude")
@@ -30,6 +33,8 @@ def normalize(source: str, raw: dict, ingested_at: datetime | None = None) -> di
         param = raw.get("parameter")
         if param in _CANON_FIELDS:
             rec[param] = raw.get("value")
+        else:
+            log.warning("openaq: unmapped parameter %r — dropping value", param)
     elif source == "envcanada":
         rec["temperature"] = raw.get("air_temp")
         rec["humidity"] = raw.get("rel_hum")
