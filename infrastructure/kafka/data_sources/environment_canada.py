@@ -1,6 +1,7 @@
 from datetime import datetime
 import calendar
 from io import StringIO
+import logging
 from pathlib import Path
 import pandas as pd
 
@@ -114,3 +115,103 @@ def scrape_environment_canada(climate_id: str, province: str, start_year: int, e
     Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     final_df.to_csv(output_file, index=False)
     return Path(output_file)
+
+
+# ---------------------------------------------------------------------------
+# Environment Canada GeoMet SWOB-realtime client
+# ---------------------------------------------------------------------------
+
+GEOMET_BASE = "https://api.weather.gc.ca/collections/swob-realtime/items"
+log = logging.getLogger(__name__)
+
+# canonical raw field -> ordered SWOB property base-name candidates.
+# SWOB stations report under different instrument/averaging variants (10m
+# anemometer at 1/2/10-minute averages, precip-gauge wind, etc.), so each
+# canonical field tries candidates in priority order and takes the first present.
+_SWOB_FIELDS = {
+    "air_temp": ["air_temp"],
+    "rel_hum": ["rel_hum"],
+    "wind_speed": [
+        "avg_wnd_spd_10m_pst1mt",
+        "avg_wnd_spd_10m_pst2mts",
+        "avg_wnd_spd_10m_pst10mts",
+        "avg_wnd_spd_10m_pst1hr",
+        "avg_wnd_spd_pcpn_gag_pst1mt",
+        "avg_wnd_spd_pcpn_gag_pst10mts",
+    ],
+    "wind_dir": [
+        "avg_wnd_dir_10m_pst1mt",
+        "avg_wnd_dir_10m_pst2mts",
+        "avg_wnd_dir_10m_pst10mts",
+        "avg_wnd_dir_10m_pst1hr",
+    ],
+    "pressure": ["stn_pres"],
+}
+
+
+def _prop(props: dict, base: str):
+    """Read a SWOB property that may be flattened as `base-value` or bare `base`."""
+    if f"{base}-value" in props:
+        return props[f"{base}-value"]
+    return props.get(base)
+
+
+def _to_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _feature_to_raw(feature: dict, min_qa: float = 0.0) -> dict:
+    props = feature.get("properties", {})
+    coords = (feature.get("geometry") or {}).get("coordinates") or []
+    lon, lat = (list(coords) + [None, None])[:2]
+    clim = _prop(props, "clim_id")
+    rec = {
+        "station_id": f"swob-{clim}",
+        "datetime_utc": _prop(props, "date_tm"),
+        "latitude": lat,
+        "longitude": lon,
+    }
+    for canon, candidates in _SWOB_FIELDS.items():
+        rec[canon] = None
+        for base in candidates:
+            val = _to_float(_prop(props, base))
+            if val is None:
+                continue
+            qa = _to_float(props.get(f"{base}-qa"))
+            if qa is not None and qa < min_qa:
+                continue
+            rec[canon] = val
+            break
+    return rec
+
+
+def _collection_to_raw(collection: dict, min_qa: float = 0.0) -> list[dict]:
+    return [_feature_to_raw(f, min_qa) for f in collection.get("features", [])]
+
+
+def poll(bbox: str, datetime_window: str | None = None, limit: int = 500, session=None) -> list[dict]:
+    """Poll GeoMet SWOB realtime for a bbox; always filtered to avoid full-collection scans."""
+    import requests
+    session = session or requests.Session()
+    params = {"bbox": bbox, "limit": limit, "f": "json"}
+    if datetime_window:
+        params["datetime"] = datetime_window
+    records: list[dict] = []
+    url = GEOMET_BASE
+    seen: set[str] = {GEOMET_BASE}
+    while url:
+        resp = session.get(url, params=params if url == GEOMET_BASE else None, timeout=60)
+        resp.raise_for_status()
+        coll = resp.json()
+        records.extend(_collection_to_raw(coll))
+        nxt = [link["href"] for link in coll.get("links", []) if link.get("rel") == "next"]
+        url = nxt[0] if nxt else None
+        if url is not None:
+            if url in seen:
+                log.warning("SWOB pagination loop detected, stopping")
+                break
+            seen.add(url)
+    return records

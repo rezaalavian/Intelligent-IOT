@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "OpenAQRaw",
+  "namespace": "intelligent.iot.raw",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "sensor_id", "type": ["null", "long"], "default": null},
+    {"name": "parameter", "type": ["null", "string"], "default": null},
+    {"name": "value", "type": ["null", "double"], "default": null},
+    {"name": "datetime_utc", "type": ["null", "string"], "default": null},
+    {"name": "latitude", "type": ["null", "double"], "default": null},
+    {"name": "longitude", "type": ["null", "double"], "default": null}
+  ]
+}
