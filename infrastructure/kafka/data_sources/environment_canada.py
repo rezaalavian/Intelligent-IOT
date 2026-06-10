@@ -150,13 +150,14 @@ def _to_float(v):
 
 def _feature_to_raw(feature: dict, min_qa: float = 0.0) -> dict:
     props = feature.get("properties", {})
-    coords = (feature.get("geometry") or {}).get("coordinates") or [None, None]
+    coords = (feature.get("geometry") or {}).get("coordinates") or []
+    lon, lat = (list(coords) + [None, None])[:2]
     clim = _prop(props, "clim_id")
     rec = {
         "station_id": f"swob-{clim}",
         "datetime_utc": _prop(props, "date_tm"),
-        "latitude": coords[1] if len(coords) > 1 else None,
-        "longitude": coords[0] if len(coords) > 0 else None,
+        "latitude": lat,
+        "longitude": lon,
     }
     for canon, base in _SWOB_FIELDS.items():
         val = _to_float(_prop(props, base))
@@ -180,11 +181,17 @@ def poll(bbox: str, datetime_window: str | None = None, limit: int = 500, sessio
         params["datetime"] = datetime_window
     records: list[dict] = []
     url = GEOMET_BASE
+    seen: set[str] = {GEOMET_BASE}
     while url:
         resp = session.get(url, params=params if url == GEOMET_BASE else None, timeout=60)
         resp.raise_for_status()
         coll = resp.json()
         records.extend(_collection_to_raw(coll))
-        nxt = [l["href"] for l in coll.get("links", []) if l.get("rel") == "next"]
+        nxt = [link["href"] for link in coll.get("links", []) if link.get("rel") == "next"]
         url = nxt[0] if nxt else None
+        if url is not None:
+            if url in seen:
+                log.warning("SWOB pagination loop detected, stopping")
+                break
+            seen.add(url)
     return records
