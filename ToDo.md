@@ -16,8 +16,9 @@ This project proposes a distributed real-time air-quality forecasting system for
 
 ## Phases & Steps (hourly-adapted)
 - Phase 1 — IoT Stream Ingestion
-  - Set up Kafka topics for OpenAQ, Environment Canada, and other sensors. (Goal: validated Avro schemas and ingestion pipelines)
+  - Set up Kafka topics for OpenAQ, Environment Canada, and other sensors. (Goal: validated Avro schemas and ingestion pipelines): COMPLETED
   - Ensure ingestion includes a step to aggregate or downsample higher-frequency sources into hourly buckets where upstream data is irregular.
+  - Note: truth resolution is hourly; the proposal's sub-minute ingestion target is not pursued in Phase 1 — this is a deliberate downsample, not a source limitation.
 
 - Phase 2 — Real-time Feature Engineering (hourly)
   - Implement Flink jobs that compute hourly rolling/lag features, wind-conditioned spatial weighting, and direction-aware adjacency A(t) aggregated per hour.
@@ -44,11 +45,23 @@ Assumption: "completed" means code artifacts or scripts exist and have been run 
 
 - Phase 1 — IoT Stream Ingestion
   - Refactored data acquisition into `infrastructure/kafka/data_sources` (OpenAQ archive fetch, Environment Canada scraper, IQAir scraper): COMPLETED
-  - Full Kafka cluster + deployed topics: SCAFFOLDING ADDED & LOCAL TESTED
-    - Added docker-compose with Zookeeper, Kafka, Schema Registry and Flink JobManager/TaskManager at `infrastructure/docker-compose/kafka-flink-compose.yml`.
-    - Added example Avro schema at `infrastructure/kafka/topics/pm25.avsc` and a Python register helper at `scripts/register_schema.py`.
-    - Verified Schema Registry reachable and schema registered (id 1) during local bring-up.
+  - Live OpenAQ v3 client (`data_sources/openaq.py` `poll()`): COMPLETED AND UNIT-TESTED
+  - Live Environment Canada GeoMet SWOB client (`data_sources/environment_canada.py` `poll()`): COMPLETED AND UNIT-TESTED
+  - `BaseProducer` with dead-letter queue: COMPLETED AND UNIT-TESTED
+  - Raw→canonical `normalizer` consumer: COMPLETED AND UNIT-TESTED
+  - Parquet audit `sink`: COMPLETED AND UNIT-TESTED
+    - Note: the parquet sink is an audit/verification artifact and is NOT yet wired to model training (Phase 2 scope).
+  - `create_topics.py` and `register_schemas.py`: COMPLETED AND UNIT-TESTED
+  - Marker-gated end-to-end integration smoke test (`tests/test_kafka_integration.py`): COMPLETED
+  - Full Kafka cluster + deployed topics: COMPLETED AND LOCAL TESTED
+    - Docker-compose with Zookeeper, Kafka, Schema Registry (port 8081) and Flink JobManager/TaskManager (Flink UI port 8082) at root `docker-compose.yml`.
+    - Canonical Avro schema at `infrastructure/kafka/schemas/measurement.avsc`; per-source raw schemas: `openaq_raw.avsc`, `envcanada_raw.avsc`, `iqair_raw.avsc`.
+    - Schema registration helper at `infrastructure/kafka/register_schemas.py`.
+    - Verified Schema Registry reachable and schemas registered during local bring-up.
     - Note: this provides a local test environment; production deployment requires provisioning, secure config and topic replication settings.
+  - Schema and vocabulary notes:
+    - `co2` is dropped from the canonical schema — no public source provides it.
+    - The canonical schema uses correct sensor names (`pm25`, etc.); reconciling these to the training-data vocabulary (`pm2`, `Temp Definition °C`, wind in tens-of-degrees) is done via a boundary rename layer that is Phase 2 scope.
 
 - Phase 2 — Real-time Feature Engineering (hourly)
   - Local Flink feature code under `analytics/flink_jobs/feature_engineering.py`: PARTIAL (raw feature introduction exists; rolling/lag transforms remain opt-in helpers and are not yet split into dedicated per-model recipes)
@@ -112,12 +125,12 @@ Assumption: "completed" means code artifacts or scripts exist and have been run 
    - Provision a local (or cloud) Kafka + Flink environment for end-to-end tests.
    - Create Avro schemas and topic config for each source and run ingestion consumer tests. Ensure topic consumers can aggregate to hourly buckets.
   - Local commands (tested):
-    ```powershell
-    # start local stack
-    docker compose -f infrastructure/docker-compose/kafka-flink-compose.yml up -d
+    ```bash
+    # start local stack (Schema Registry on port 8081, Flink UI on port 8082)
+    docker compose up -d
 
-    # register the Avro schema (requires Schema Registry on port 8081)
-    python scripts/register_schema.py
+    # register Avro schemas (requires Schema Registry on port 8081)
+    python infrastructure/kafka/register_schemas.py
 
     # quick registry health check
     python scripts/check_schema_registry.py
