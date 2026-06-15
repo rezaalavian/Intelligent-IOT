@@ -9,15 +9,11 @@ This script:
 Usage:
     python scripts/prepare_windows.py --max-rows 1000 --history 24 --horizon 1 --target pm2 --out data/processed/windows.npz
 """
-from __future__ import annotations
-
 import argparse
 import os
 from typing import List
-
 import numpy as np
 import pandas as pd
-
 from analytics.flink_jobs.feature_engineering import introduce_raw_features
 
 

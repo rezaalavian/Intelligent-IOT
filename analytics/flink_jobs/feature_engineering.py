@@ -4,12 +4,8 @@ The project now separates feature introduction from feature transformations.
 Raw features are introduced first, then optional lag/rolling/graph transforms can be
 applied per model and horizon.
 """
-
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Sequence
-
 import numpy as np
 import pandas as pd
 import torch

@@ -4,17 +4,13 @@ This script will query the OpenAQ API v2 for `pm25` measurements for the cities
 present in `data/raw/historical_rawdata.csv`, aggregate to hourly, and merge
 the values into a new CSV `data/raw/historical_rawdata_with_pm2.csv`.
 """
-from __future__ import annotations
-
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
 import time
 import sys
-
 import pandas as pd
 import requests
-
 
 OPENAQ_MEASUREMENTS = "https://api.openaq.org/v2/measurements"
 

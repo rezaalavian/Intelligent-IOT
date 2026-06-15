@@ -2,13 +2,10 @@
 
 Prints JSON by default; with --produce, publishes Avro to the canonical topic.
 """
-from __future__ import annotations
-
 import argparse
 import json
 import time
 from datetime import datetime, timezone
-
 import pandas as pd
 
 DEFAULT_SOURCE = "data/external/openaq_7570/ml_wide_format.csv"

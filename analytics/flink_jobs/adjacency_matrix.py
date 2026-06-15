@@ -1,7 +1,5 @@
 """Utilities to compute wind-conditioned dynamic adjacency matrix A(t)."""
 
-from __future__ import annotations
-
 import numpy as np
 
 

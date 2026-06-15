@@ -1,10 +1,6 @@
-from __future__ import annotations
-
 import logging
-
 from confluent_kafka import KafkaException, KafkaError
 from confluent_kafka.admin import AdminClient, NewTopic
-
 from .config import load_config, SOURCES
 
 logging.basicConfig(level=logging.INFO)

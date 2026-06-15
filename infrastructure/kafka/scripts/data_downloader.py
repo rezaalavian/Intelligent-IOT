@@ -3,13 +3,9 @@
 The project should prefer APIs for live updates and keep the raw historical CSV as
 the training seed. Scraping remains optional and is not the default runtime path.
 """
-
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
-
 import pandas as pd
 from pathlib import Path
 

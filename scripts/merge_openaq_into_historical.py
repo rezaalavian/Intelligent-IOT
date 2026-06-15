@@ -5,11 +5,8 @@ It will pivot the long-format file into hourly ML format, extract a PM2/PM2.5 co
 and merge by hour into `data/raw/historical_rawdata.csv`, writing
 `data/raw/historical_rawdata_with_openaq.csv`.
 """
-from __future__ import annotations
-
 from pathlib import Path
 import pandas as pd
-
 
 def merge(openaq_raw: str | Path = "data/external/openaq_7570/raw_long_format.csv",
           historical: str | Path = "data/raw/historical_rawdata.csv",

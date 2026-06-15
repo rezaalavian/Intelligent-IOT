@@ -1,10 +1,7 @@
 """Quick training run on pm2 for fast feedback (small subset + fewer epochs)."""
-from __future__ import annotations
-
 from datetime import datetime
 from pathlib import Path
 import json
-
 import sys
 from pathlib import Path as _Path
 

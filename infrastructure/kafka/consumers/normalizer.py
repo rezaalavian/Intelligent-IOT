@@ -1,8 +1,5 @@
-from __future__ import annotations
-
 import logging
 from datetime import datetime, timezone
-
 from ..serialization import to_utc, floor_to_hour
 
 log = logging.getLogger(__name__)

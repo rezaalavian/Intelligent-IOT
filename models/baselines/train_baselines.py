@@ -8,22 +8,38 @@ This module keeps the project structure while reproducing the exact tested flow:
 - HA, LR, LGBM/RF, LSTM, and STGNN baselines
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 import argparse
 import json
 import random
 import time
-
-import numpy as np
-import pandas as pd
+from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+import pandas as pd
 from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from models.forecast_bundle import ForecastBundle
+from models.model_io import save_model
+from models.model_registry import (
+    ACTIVE_MODEL_KEY,
+    default_active_horizons,
+    save_model_family,
+    set_active_horizons,
+    set_active_model,
+    write_registry,
+)
+from models.predictors import (
+    AirQualitySTGNN,
+    ConstantPredictor,
+    LSTMPredictor,
+    STGNNPredictor,
+    TabularPredictor,
+    TorchLSTMRegressor,
+)
 
 try:
     from sklearn.ensemble import RandomForestRegressor
@@ -207,33 +223,6 @@ def build_graph_sequences(scaled_data, raw_df, lookback=12, horizon=1):
     return X_graphs
 
 
-class AirQualitySTGNN(nn.Module):
-    def __init__(self, num_features, num_timesteps_input):
-        super().__init__()
-        self.gat1 = GATConv(num_features, 32, heads=2, concat=True)
-        self.gat2 = GATConv(32 * 2, 32, heads=1, concat=False)
-        self.tcn1 = nn.Conv1d(32, 32, kernel_size=3, padding=1)
-        self.tcn2 = nn.Conv1d(32, 16, kernel_size=3, padding=1)
-        self.skip_project = nn.Linear(num_features * num_timesteps_input, 16 * num_timesteps_input)
-        self.regression_head = nn.Linear(16 * num_timesteps_input, 1)
-
-    def forward(self, data):
-        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        num_nodes = x.size(0)
-        x_skip = x.view(num_nodes, -1)
-        x_skip = self.skip_project(x_skip)
-        spatial_slices = []
-        for t in range(x.size(2)):
-            h_s = F.relu(self.gat1(x[:, :, t], edge_index, edge_attr=edge_attr))
-            h_s = self.gat2(h_s, edge_index, edge_attr=edge_attr)
-            spatial_slices.append(h_s)
-        x_space = torch.stack(spatial_slices, dim=-1)
-        x_time = F.relu(self.tcn1(x_space))
-        x_time = F.relu(self.tcn2(x_time))
-        x_flat = x_time.view(num_nodes, -1) + x_skip
-        return self.regression_head(x_flat).squeeze(-1)
-
-
 def _log_test_metrics(metrics: dict[str, float], prefix: str):
     if mlflow is None:
         return
@@ -271,6 +260,7 @@ def train_and_eval(
     seed: int = 42,
     weight_decay: float = 1e-4,
     patience: int = 5,
+    save_models: bool = True,
 ):
     del lr, hidden_dim, rf_backend, weight_decay, patience
 
@@ -309,6 +299,16 @@ def train_and_eval(
     selected = model_name.lower()
 
     results_master: dict[int, dict] = {1: {}, 2: {}, 3: {}}
+    ha_models: dict[int, ConstantPredictor] = {}
+    lr_models: dict[int, Any] = {}
+    rf_models: dict[int, Any] = {}
+    lstm_models: dict[int, LSTMPredictor] = {}
+    stgnn_models: dict[int, STGNNPredictor] = {}
+    ha_scalers: dict[int, RobustScaler] = {}
+    lr_scalers: dict[int, RobustScaler] = {}
+    rf_scalers: dict[int, RobustScaler] = {}
+    lstm_scalers: dict[int, RobustScaler] = {}
+    stgnn_scalers: dict[int, RobustScaler] = {}
 
     for h in horizons:
         print("\n" + "=" * 85)
@@ -351,6 +351,8 @@ def train_and_eval(
                 val_m = compile_metrics(y_val, np.full(shape=y_val.shape, fill_value=ha_mean, dtype=np.float32))
                 test_m = compile_metrics(y_test, np.full(shape=y_test.shape, fill_value=ha_mean, dtype=np.float32))
                 results_master[h]["Historical Average"] = {"Train": train_m, "Val": val_m, "Test": test_m}
+                ha_models[h] = ConstantPredictor(ha_mean)
+                ha_scalers[h] = scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -368,6 +370,8 @@ def train_and_eval(
                 val_m = compile_metrics(y_val, lr_model.predict(X_val_scaled))
                 test_m = compile_metrics(y_test, lr_model.predict(X_test_scaled))
                 results_master[h]["Linear Regression"] = {"Train": train_m, "Val": val_m, "Test": test_m}
+                lr_models[h] = TabularPredictor(lr_model, scaler, feature_cols)
+                lr_scalers[h] = scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -399,6 +403,8 @@ def train_and_eval(
                 val_m = compile_metrics(y_val, tree.predict(X_val_scaled))
                 test_m = compile_metrics(y_test, tree.predict(X_test_scaled))
                 results_master[h]["Gradient Boosting/RF"] = {"Train": train_m, "Val": val_m, "Test": test_m}
+                rf_models[h] = TabularPredictor(tree, scaler, feature_cols)
+                rf_scalers[h] = scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -433,25 +439,7 @@ def train_and_eval(
                     val_pred = lstm.predict(X_va_3d, verbose=0).flatten()
                     test_pred = lstm.predict(X_te_3d, verbose=0).flatten()
                 else:
-                    class _TorchLSTM(nn.Module):
-                        def __init__(self, in_dim: int):
-                            super().__init__()
-                            self.l1 = nn.LSTM(in_dim, 64, batch_first=True)
-                            self.d1 = nn.Dropout(0.2)
-                            self.l2 = nn.LSTM(64, 32, batch_first=True)
-                            self.d2 = nn.Dropout(0.2)
-                            self.f1 = nn.Linear(32, 16)
-                            self.f2 = nn.Linear(16, 1)
-
-                        def forward(self, x):
-                            out, _ = self.l1(x)
-                            out = self.d1(out)
-                            out, _ = self.l2(out)
-                            out = self.d2(out[:, -1, :])
-                            out = torch.relu(self.f1(out))
-                            return self.f2(out)
-
-                    tlstm = _TorchLSTM(X_tr_3d.shape[2]).to(device)
+                    tlstm = TorchLSTMRegressor(X_tr_3d.shape[2]).to(device)
                     opt = torch.optim.Adam(tlstm.parameters(), lr=1e-3)
                     loss_fn = nn.MSELoss()
                     xtr = torch.tensor(X_tr_3d, dtype=torch.float32).to(device)
@@ -466,11 +454,15 @@ def train_and_eval(
                         train_pred = tlstm(xtr).detach().cpu().numpy().flatten()
                         val_pred = tlstm(torch.tensor(X_va_3d, dtype=torch.float32).to(device)).detach().cpu().numpy().flatten()
                         test_pred = tlstm(torch.tensor(X_te_3d, dtype=torch.float32).to(device)).detach().cpu().numpy().flatten()
+                    tlstm = tlstm.cpu()
 
                 train_m = compile_metrics(y_tr_3d, train_pred)
                 val_m = compile_metrics(y_va_3d, val_pred)
                 test_m = compile_metrics(y_te_3d, test_pred)
                 results_master[h]["LSTM Sequential"] = {"Train": train_m, "Val": val_m, "Test": test_m}
+                if not USE_TF and TorchLSTMRegressor is not None:
+                    lstm_models[h] = LSTMPredictor(tlstm, scaler, feature_cols, lookback=LOOKBACK_STEPS)
+                    lstm_scalers[h] = scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -483,7 +475,8 @@ def train_and_eval(
             else:
                 run = None
             try:
-                scaled_all = RobustScaler().fit_transform(df_h[feature_cols])
+                graph_scaler = RobustScaler().fit(df_h[feature_cols])
+                scaled_all = graph_scaler.transform(df_h[feature_cols])
                 X_graphs = build_graph_sequences(scaled_all, df_h, lookback=LOOKBACK_STEPS, horizon=h)
                 g_train = X_graphs[:train_end]
                 g_val = X_graphs[train_end:val_end]
@@ -523,6 +516,13 @@ def train_and_eval(
                 val_m = compile_metrics(y_va_true, va_p)
                 test_m = compile_metrics(y_te_true, te_p)
                 results_master[h]["Spatiotemporal Graph"] = {"Train": train_m, "Val": val_m, "Test": test_m}
+                stgnn_models[h] = STGNNPredictor(
+                    stgnn.cpu(),
+                    graph_scaler,
+                    feature_cols,
+                    lookback=LOOKBACK_STEPS,
+                )
+                stgnn_scalers[h] = graph_scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -556,8 +556,54 @@ def train_and_eval(
 
     out_path = Path("models/saved_models/baseline_metrics.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    normalized_metrics = _normalize_results(results_master)
     with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump({"timestamp": time.time(), "results": _normalize_results(results_master)}, fh, indent=2)
+        json.dump({"timestamp": time.time(), "results": normalized_metrics}, fh, indent=2)
+
+    if save_models:
+        family_specs = [
+            ("ha", "historical_average", ha_models, ha_scalers),
+            ("lr", "linear_regression", lr_models, lr_scalers),
+            ("rf", "gradient_boosting_rf", rf_models, rf_scalers),
+            ("lstm", "lstm", lstm_models, lstm_scalers),
+            ("stgnn", "stgnn", stgnn_models, stgnn_scalers),
+        ]
+        registry_families: dict[str, dict[str, Any]] = {}
+        for key, model_type, horizon_models, horizon_scalers in family_specs:
+            if not horizon_models:
+                continue
+            bundle_path = save_model_family(
+                key,
+                model_type,
+                feature_columns=feature_cols,
+                target_column=target_col,
+                horizon_models=horizon_models,
+                horizon_scalers=horizon_scalers,
+                metrics=normalized_metrics,
+                lookback=LOOKBACK_STEPS,
+                save_models=True,
+            )
+            registry_families[key] = {
+                "model_type": model_type,
+                "bundle": str(bundle_path) if bundle_path else None,
+                "horizons": sorted(horizon_models.keys()),
+                "per_horizon": [f"{key}_h{h}.pkl" for h in sorted(horizon_models.keys())],
+            }
+            print(f"Saved {key} bundle ({len(horizon_models)} horizons)")
+
+        if stgnn_models:
+            set_active_horizons({1: ACTIVE_MODEL_KEY, 2: ACTIVE_MODEL_KEY, 3: ACTIVE_MODEL_KEY})
+            print(f"Phase 5 active horizons: all {ACTIVE_MODEL_KEY}")
+        elif lr_models:
+            set_active_model("lr")
+            print("Phase 5 active horizons: all lr (STGNN not trained in this run)")
+
+        write_registry(
+            registry_families,
+            active_model=ACTIVE_MODEL_KEY if stgnn_models else "lr",
+            active_horizons=default_active_horizons(ACTIVE_MODEL_KEY if stgnn_models else "lr"),
+        )
+        print(f"Model registry written to models/saved_models/model_registry.json")
 
     return results_master
 
@@ -576,7 +622,7 @@ def cli():
     p.add_argument("--mlflow-experiment-name", default="Intelligent-IOT-baselines")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--patience", type=int, default=5)
+    p.add_argument("--no-save", action="store_true", help="Skip writing .pkl deployment artifacts")
     args = p.parse_args()
     train_and_eval(
         args.model,
@@ -591,7 +637,7 @@ def cli():
         mlflow_experiment_name=args.mlflow_experiment_name,
         seed=args.seed,
         weight_decay=args.weight_decay,
-        patience=args.patience,
+        save_models=not args.no_save,
     )
 
 

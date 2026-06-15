@@ -1,13 +1,8 @@
 """Spatiotemporal forecasting model scaffold (GAT + TCN)."""
-
-from __future__ import annotations
-
 from typing import Any
-
 import numpy as np
 import torch
 from torch import nn
-
 from models.spatiotemporal.layers import GraphAttentionBlock, TemporalBlock
 
 

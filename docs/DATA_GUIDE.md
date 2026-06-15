@@ -1,7 +1,7 @@
 # Data Guide
 
 ## Canonical historical dataset
-- Path: `data/raw/historical_rawdata.csv`
+- Path: `data/raw/RawData.csv`
 - Resolution: hourly
 - Role: training seed for phases 2 and 3
 

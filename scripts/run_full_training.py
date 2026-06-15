@@ -1,12 +1,9 @@
 """Run full training on the historical dataset and save metrics to disk."""
-from __future__ import annotations
-
 import argparse
 import json
 from datetime import datetime
 from pathlib import Path
 import sys
-
 import sys
 from pathlib import Path as _Path
 

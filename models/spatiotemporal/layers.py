@@ -3,9 +3,6 @@
 These are lightweight, CPU-friendly layers that keep the architecture runnable in the
 shared project environment while preserving the GAT + TCN design intent.
 """
-
-from __future__ import annotations
-
 import torch
 from torch import nn
 

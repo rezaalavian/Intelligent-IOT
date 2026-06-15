@@ -1,16 +1,13 @@
 """Training routine for the spatiotemporal model scaffold."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
-
+import torch
+from torch import nn
 import numpy as np
 import pandas as pd
-import torch
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from torch import nn
 
 try:
     import mlflow  # type: ignore[import-not-found]

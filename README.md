@@ -13,7 +13,7 @@ This repository implements a full end-to-end project flow for hourly air-quality
 - Expose predictions and alerts through a small API.
 
 ## Current Data Strategy
-- Historical source: `data/raw/historical_rawdata.csv`
+- Historical source: `data/raw/RawData.csv`
 - Live source: API-first ingestion through the Kafka layer
 - Scraping: optional fallback only, not the main runtime path
 
@@ -93,7 +93,14 @@ conda run -n Intelligent-IOT python -m models.spatiotemporal.train
 Start the API:
 
 ```powershell
-conda run -n Intelligent-IOT uvicorn infrastructure.deployment.app:app --reload
+conda run -n Intelligent-IOT-blackwell uvicorn infrastructure.deployment.app:app --reload
+```
+
+Save deployment models and launch the dashboard:
+
+```powershell
+conda run -n Intelligent-IOT-blackwell python scripts/save_deployment_models.py
+conda run -n Intelligent-IOT-blackwell streamlit run infrastructure/deployment/dashboard/streamlit_app.py
 ```
 
 ## Notes

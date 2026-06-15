@@ -1,11 +1,7 @@
 """Run end-to-end benchmarks on held-out forecast windows."""
 
-from __future__ import annotations
-
 from pathlib import Path
-
 import numpy as np
-
 from evaluation.metrics import regression_metrics, timed_call
 from infrastructure.deployment.controller import ForecastController
 from models.spatiotemporal.train import build_windows, load_training_frame, train

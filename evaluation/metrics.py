@@ -1,11 +1,8 @@
 """Evaluation metrics for forecasting and operational latency."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Iterable
-
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 

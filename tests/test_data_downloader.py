@@ -1,9 +1,5 @@
-from __future__ import annotations
-
 import pandas as pd
-
 from infrastructure.kafka.scripts.data_downloader import DEFAULT_KEEP_COLUMNS, clean_raw_data
-
 
 def test_clean_raw_data_normalizes_and_derives_wind_components() -> None:
     frame = pd.DataFrame(

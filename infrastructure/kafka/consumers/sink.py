@@ -1,11 +1,7 @@
-from __future__ import annotations
-
 import logging
 from datetime import datetime
 from pathlib import Path
-
 import pandas as pd
-
 from .normalizer import dedup_key
 
 log = logging.getLogger(__name__)

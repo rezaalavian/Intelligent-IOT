@@ -1,9 +1,5 @@
 """Long-term graph-based recovery stub."""
-
-from __future__ import annotations
-
 from typing import Any
-
 import pandas as pd
 
 

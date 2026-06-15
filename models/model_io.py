@@ -3,12 +3,8 @@
 Use joblib/pickle for classical ML models and portable export formats for deep models.
 The Flink side should load one artifact once per task and reuse it for all records.
 """
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
-
 import joblib
 
 try:

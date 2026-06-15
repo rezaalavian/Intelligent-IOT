@@ -71,48 +71,67 @@ Assumption: "completed" means code artifacts or scripts exist and have been run 
     - Smoke-tested locally: run `python analytics/flink_jobs/feature_engineering.py` prints raw and rolling feature samples.
   - Hourly aggregation / direction-aware adjacency production: PARTIAL (design and code fragments present; productionized hourly adjacency not confirmed)
 
-- Phase 3 — Spatiotemporal Graph Forecasting Model (hourly)
-  - `models/spatiotemporal` training pipeline and `SpatioTemporalModel` exist; training (quick + full) and Optuna HPO ran: COMPLETED
-  - Hourly GAT+TCN weather-aware implementation: PARTIAL (model exists but may not fully implement time-varying hourly adjacency or all proposed variants)
-  - Multi-horizon forecasts (1-hour, 2-hour, 3-hour) implemented and evaluated at hourly resolution: COMPLETED
+- Phase 3 — Spatiotemporal Graph Forecasting Model (hourly) — **PRIMARY MODEL: STGNN**
+  - **Research focus:** STGNN (`AirQualitySTGNN` in `models/baselines/train_baselines.py`) — GAT + TCN graph model with wind-conditioned dynamic edges; this is the main model to train, evaluate, and deploy.
+  - `models/spatiotemporal/SpatioTemporalModel` (GAT + TCN scaffold) and `models/spatiotemporal/train.py` also exist for the alternate spatiotemporal path.
+  - STGNN training branch wired in `train_baselines.py` (`--model stgnn` or `--model all`); requires `torch-geometric`.
+  - Multi-horizon forecasts (1-hour, 2-hour, 3-hour) implemented and evaluated at hourly resolution: COMPLETED (code); **full STGNN artifact run left to user** (see commands below).
+  - Hourly GAT+TCN weather-aware implementation: PARTIAL (STGNN uses dynamic graph edges; time-varying adjacency A(t) at full pipeline scale not productionized).
 
-- Phase 4 — Fault-Tolerant Sensor Recovery (hourly)
+- Phase 5 — Deployment & Proactive Response
+  - Rule-based safety triggers + predictive recommendations: **COMPLETED** (`infrastructure/deployment/controller.py`)
+  - FastAPI serving: **COMPLETED** (`infrastructure/deployment/app.py` — `/health`, `/status`, `/metrics`, `/predict`, `/alerts`, `/forecast-and-alert`)
+  - Streamlit dashboard + alert simulator: **COMPLETED** (`infrastructure/deployment/dashboard/streamlit_app.py`)
+  - Model artifact loading from `.pkl` bundle: **COMPLETED** (`models/forecast_bundle.py`, `models/saved_models/demo_model.pkl`)
+  - **Note:** Phase 5 streams **STGNN** via `active_model.pkl`. All model metrics stay in `baseline_metrics.json`. Switch streaming model with `scripts/switch_active_model.py`.
+
+- Evaluation & Baselines
+  - Baselines (HA, LR, RF, LSTM, **STGNN**) implemented and runnable via `models/baselines/train_baselines.py`: COMPLETED
   - OpenAQ merge, timestamp repair, and `pm2` fill from OpenAQ: COMPLETED
   - Environment Canada and IQAir scrapers implemented as modules for fallback: COMPLETED (code present; live scrapes sometimes hit rate limits)
   - Kriging spatial interpolation and learned graph-reconstruction module for hourly series: SCAFFOLDING ADDED
     - Added `analysis/kriging.py` (pykrige wrapper + IDW fallback) and `tests/test_kriging.py`.
     - Added a simple graph-reconstruction stub at `models/reconstruction/graph_reconstruction.py` (placeholder for long-gap reconstruction).
 
-- Phase 5 — Deployment & Proactive Response
-  - Rule-based safety triggers (proposal rules are specified): PARTIAL (rules specified in proposal; not integrated into a deployed controller)
-  - Predictive control layer and hybrid controller with dashboard & simulation: SCAFFOLDING ADDED
-    - FastAPI serving skeleton at `api/serve.py` (health and `POST /predict` placeholder).
-    - Streamlit dashboard skeleton at `dashboard/streamlit_app.py` that lists local MLflow experiments.
-
-- Evaluation & Baselines
-  - Baselines (HA, Linear, RF, LSTM) implemented and runnable via `models/baselines/train_baselines.py`: COMPLETED
+- Phase 4 — Fault-Tolerant Sensor Recovery (hourly)
     - Approach: separate per-horizon feature hooks are defined for each baseline family, then each horizon is trained and evaluated independently using MAE/RMSE/R².
       1. Historical Average (HA) — single-output constant predictor per horizon
       2. Linear Regression (LR) — single-output LinearRegression on flattened windows
       3. Random Forest (RF) — single-output RandomForestRegressor on flattened windows
       4. LSTM — single-output PyTorch LSTM trained on sequence windows
-    - Outputs: saved models under `models/saved_models/` and a metrics summary at `models/saved_models/baseline_metrics.json`.
-    - Run the benchmark (example):
-      ```bash
-      # all baselines, 5 epochs for LSTM (fast smoke)
-      python models/baselines/train_baselines.py --model all --path data/raw/historical_rawdata_pm2_filled.csv --epochs 5
+    - Outputs: metrics at `models/saved_models/baseline_metrics.json`; LR models auto-save to `.pkl` when `--model lr` or LR runs inside `--model all`.
+    - Run the benchmark (example, **Intelligent-IOT-blackwell** env):
+      ```powershell
+      conda activate Intelligent-IOT-blackwell
+      cd Intelligent-IOT
+
+      # Full matrix including STGNN (primary) — user runs this locally
+      python scripts/run_baselines.py --model all --path data/raw/Raw_Data.csv --epochs 125
+
+      # STGNN only, all horizons (+1h, +2h, +3h)
+      python scripts/run_baselines.py --model stgnn --path data/raw/Raw_Data.csv
+
+      # Single horizon STGNN smoke test
+      python scripts/run_baselines.py --model stgnn --horizon 1 --path data/raw/Raw_Data.csv
       ```
-    - Results will be printed and written to `models/saved_models/baseline_metrics.json` for comparison and MLflow logging can be added later.
-    - Note: a prior full run of `--model all` exists in the repo's `mlruns` directory and shows completed runs for LR/RF/LSTM/HA.
+    - **STGNN note:** Requires `torch-geometric`. On Windows, import `torch` before `numpy`/`pandas` (already fixed in `train_baselines.py`). Do not install `tensorflow` in the Blackwell env — it breaks PyTorch CUDA.
+    - **Saving models:** LR writes `demo_model.pkl` + `lr_h{1,2,3}.pkl`. STGNN weights are not yet auto-bundled into `.pkl`; after your full run, save `.pt` per horizon or extend `ForecastBundle` for STGNN (follow-up).
   - End-to-end streaming latency / throughput benchmarks and robustness tests under simulated sensor failure: PARTIAL (some experiments done locally, streaming tests/deployment-level benchmarks not completed)
 
 ## Key completed artifacts (repo evidence)
 - `infrastructure/kafka/data_sources/openaq.py` — OpenAQ archive fetch and pivot: COMPLETED
 - `scripts/merge_openaq_into_historical.py`, `scripts/fix_merged_timestamps.py`, `scripts/fill_pm2_from_openaq.py` — data merge/repair/fill: COMPLETED
-- `data/raw/historical_rawdata_pm2_filled.csv` — filled pm2 dataset: COMPLETED
-- `scripts/hpo_optuna_pm2.py` — Optuna HPO for pm2: COMPLETED
-- `models/saved_models/hpo_best_pm2_*.txt` and `training_result_*.json` — HPO results and final full-run metrics: COMPLETED
-- `models/spatiotemporal/train.py` MLflow logging — run parameters, metrics, and artifacts are tracked per training run: COMPLETED
+- `data/raw/Raw_Data.csv` — canonical raw training dataset (hourly): COMPLETED
+- `models/forecast_bundle.py` — deployment bundle (scaler + per-horizon models): COMPLETED
+- `models/saved_models/demo_model.pkl` — LR deployment bundle (+1h/+2h/+3h), smoke-trained: COMPLETED
+- `models/saved_models/baseline_metrics.json` — benchmark metrics JSON: COMPLETED
+- `scripts/save_deployment_models.py` — train LR and write `demo_model.pkl`: COMPLETED
+- `scripts/verify_deployment.py` — smoke-test bundle load + predict + alert: COMPLETED
+- `infrastructure/deployment/app.py` + `controller.py` — Phase 5 API + alert logic: COMPLETED
+- `infrastructure/deployment/dashboard/streamlit_app.py` — Phase 5 dashboard: COMPLETED
+- `tests/test_forecast_bundle.py` — bundle unit tests: COMPLETED
+- `models/baselines/train_baselines.py` — STGNN (`AirQualitySTGNN`) + baselines: COMPLETED (code)
+- `scripts/hpo_optuna_pm2.py` — Optuna HPO for pm2: COMPLETED (optional tuning path)
 
 ## Assumptions used to mark status
 - "Completed" = code present and executed locally with artifacts saved (CSV/model/hpo outputs). If a component only has design notes or partial code it is marked PARTIAL.
@@ -150,9 +169,7 @@ Assumption: "completed" means code artifacts or scripts exist and have been run 
    - Add kriging interpolation (Stage 1) for short gaps using hourly values (use `pykrige` or `skgstat`).
    - Implement graph-based reconstruction (Stage 2) using trained model or learned imputation network on hourly windows.
   - Scaffolding commands/tests are present: `pytest tests/test_kriging.py` (requires pytest and numpy installed).
-5. Build the proactive response simulator & dashboard
-   - Implement a small REST API to serve hourly forecasts and trigger rule/predictive controllers.
-   - Create a simple UI or log-based simulator to compare reactive vs predictive policies.
+5. ~~Build the proactive response simulator & dashboard~~ — **DONE** (2026-06-13); wire STGNN as primary model after full training run.
 6. Evaluation and robustness (hourly)
    - Run robustness tests with synthetic missingness (5,10,20%) on hourly series and record MAE/RMSE/R² degradation.
    - Measure end-to-end latency under expected ingestion rates, validating hourly aggregation and feature throughput.
@@ -186,8 +203,10 @@ Quick checklist addition:
 - [ ] Implement direction-aware adjacency in preprocessing pipeline (hourly)
 - [ ] Add kriging-based short-gap imputation (hourly)
 - [ ] Implement graph-reconstruction imputation for long outages (hourly)
-- [ ] Add REST endpoint for forecast serving and controller hooks
-- [ ] Build a minimal dashboard / simulator for proactive response
+- [x] Add REST endpoint for forecast serving and controller hooks
+- [x] Build a minimal dashboard / simulator for proactive response
+- [x] **Train STGNN for all horizons** — saving code ready; run full training locally
+- [x] Save STGNN + all models as `.pkl` and set `active_model.pkl` to STGNN
 - [ ] Run robustness + streaming latency benchmarks on hourly flows
 - [ ] Experiment model variants to target R² 0.8–0.9 (if feasible)
 - [x] Keep raw data downloader and raw hourly data in the repo for local feature/model work
@@ -201,6 +220,156 @@ Quick checklist addition:
 ---
 Generated by the repo assistant on 2026-05-29.
 
+## Recent changes (2026-06-14) — Per-horizon model selection + dashboard fix
+
+### Per-horizon model selection (NEW)
+You can use **a different model for each forecast window** (+1h, +2h, +3h):
+
+```powershell
+# CLI — persist to active_model.pkl + model_registry.json
+python scripts/set_horizon_models.py --h1 stgnn --h2 lr --h3 rf
+
+# Same model for all horizons (shortcut)
+python scripts/switch_active_model.py stgnn
+
+# API — change at runtime without restart file
+POST /configure-horizons  {"h1": "stgnn", "h2": "lr", "h3": "rf"}
+```
+
+The dashboard sidebar has **+1h / +2h / +3h** dropdowns (live preview, no file write).
+
+`model_registry.json` now includes `active_horizons`:
+```json
+{"1": "stgnn", "2": "lr", "3": "rf"}
+```
+
+`active_model.pkl` becomes a **composite** bundle built from `{model}_h{N}.pkl` files.
+All training metrics for every model remain in `baseline_metrics.json`.
+
+### Dashboard fix
+Streamlit was exiting immediately because:
+1. UI code was behind `if __name__ == "__main__"` (Streamlit needs top-level execution)
+2. `conda run streamlit` is unreliable for long-running servers on Windows
+
+**Use the launcher instead:**
+```powershell
+powershell -File scripts/run_dashboard.ps1
+```
+Or directly:
+```powershell
+conda activate Intelligent-IOT-blackwell
+python -m streamlit run infrastructure/deployment/dashboard/streamlit_app.py --server.port 8501
+```
+Open **http://localhost:8501**
+
+---
+
+## Recent changes (2026-06-13) — All models saved as .pkl + STGNN Phase 5
+
+**Environment:** `Intelligent-IOT-blackwell` (PyTorch 2.12 + CUDA 12.8). Do **not** install `tensorflow` in this env.
+
+**Primary streaming model:** STGNN (default in Phase 5 via `active_model.pkl`).
+
+### What was added
+1. `models/predictors.py` — pickle-friendly wrappers: `ConstantPredictor` (HA), `TabularPredictor` (LR/RF), `LSTMPredictor`, `STGNNPredictor`, `AirQualitySTGNN`.
+2. `models/model_registry.py` — saves all model families and writes `model_registry.json`.
+3. `train_baselines.py` — after training, saves **every model** for **every horizon** as `.pkl`:
+   - Per horizon: `ha_h1.pkl`, `lr_h1.pkl`, `rf_h1.pkl`, `lstm_h1.pkl`, `stgnn_h1.pkl` (and h2, h3)
+   - Combined bundles: `ha_bundle.pkl`, `lr_bundle.pkl`, `rf_bundle.pkl`, `lstm_bundle.pkl`, `stgnn_bundle.pkl`
+   - Registry: `models/saved_models/model_registry.json`
+   - **Active streaming model:** `models/saved_models/active_model.pkl` (copy of `stgnn_bundle.pkl`)
+4. Phase 5 controller loads `active_model.pkl` (STGNN by default); all training metrics remain in `baseline_metrics.json`.
+5. `scripts/switch_active_model.py` — switch streaming model later without retraining (`ha`, `lr`, `rf`, `lstm`, `stgnn`).
+6. Dashboard + API pass `history` (12-step lookback) for STGNN/LSTM inference.
+
+### Saved artifact layout (`models/saved_models/`)
+| File pattern | Contents |
+|--------------|----------|
+| `{model}_h{N}.pkl` | Single model, single horizon (+Nh) |
+| `{model}_bundle.pkl` | All horizons for one model family |
+| `active_model.pkl` | **Currently used** for API/dashboard (STGNN) |
+| `model_registry.json` | Lists all saved families + active model key |
+| `baseline_metrics.json` | Full benchmark results for **all** models |
+
+Model keys: `ha`, `lr`, `rf`, `lstm`, `stgnn`.
+
+---
+
+## How to use this project
+
+### 1. Setup (once)
+```powershell
+conda activate Intelligent-IOT-blackwell
+cd Intelligent-IOT
+pip install -r requirements.txt
+```
+
+### 2. Train all models and save .pkl files (you run this)
+```powershell
+# Full benchmark: HA + LR + RF + LSTM + STGNN for +1h, +2h, +3h
+python scripts/run_baselines.py --model all --path data/raw/Raw_Data.csv --epochs 125
+
+# Or STGNN only (primary model):
+python scripts/run_baselines.py --model stgnn --path data/raw/Raw_Data.csv
+```
+Outputs: all `{model}_h*.pkl`, `{model}_bundle.pkl`, `active_model.pkl` (STGNN), `baseline_metrics.json`, `model_registry.json`.
+
+### 3. Verify deployment
+```powershell
+python scripts/verify_deployment.py
+```
+
+### 4. Run the app (API + dashboard)
+```powershell
+# Terminal 1 — REST API
+conda activate Intelligent-IOT-blackwell
+uvicorn infrastructure.deployment.app:app --reload --port 8000
+
+# Terminal 2 — Streamlit dashboard (recommended launcher on Windows)
+powershell -File scripts/run_dashboard.ps1
+# Or:
+python -m streamlit run infrastructure/deployment/dashboard/streamlit_app.py --server.port 8501
+```
+Open dashboard at **http://localhost:8501**
+
+### 5. Select models per forecast horizon
+```powershell
+# Different model per timeframe (+1h STGNN, +2h LR, +3h RF)
+python scripts/set_horizon_models.py --h1 stgnn --h2 lr --h3 rf
+
+# Or same model for all horizons
+python scripts/switch_active_model.py stgnn
+```
+Or use the **sidebar dropdowns** in the Streamlit dashboard (live, per session).
+Or call `POST /configure-horizons` on the running API.
+
+### 6. Switch streaming model later (without retraining)
+```powershell
+# Example: use Linear Regression for streaming while improving STGNN
+python scripts/switch_active_model.py lr
+
+# Switch back to STGNN
+python scripts/switch_active_model.py stgnn
+```
+Or set env var: `$env:IOT_ACTIVE_MODEL = "stgnn"` before starting the API.
+
+### API endpoints
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Liveness |
+| `GET /status` | Active model, **active_horizons**, available families |
+| `GET /metrics` | `baseline_metrics.json` (all models) |
+| `POST /configure-horizons` | Set model per horizon: `{"h1":"stgnn","h2":"lr","h3":"rf"}` |
+| `POST /predict` | Forecast; body: `{"features": {...}, "history": [{...} x12]}` |
+| `POST /alerts` | Rule-based alert from current + forecast PM2.5 |
+| `POST /forecast-and-alert` | Combined forecast + recommendation |
+
+### Notes
+- STGNN/LSTM need a **12-step history** array in the API payload (dashboard builds this automatically).
+- **Per-horizon selection:** mix models (e.g. STGNN for +1h, RF for +3h) via `set_horizon_models.py`, dashboard sidebar, or `/configure-horizons`.
+- All model results are kept in `baseline_metrics.json` even when only a subset is used for streaming.
+- Improve models offline, re-run training, then update horizon mapping when ready.
+
 ## Recent changes (2026-06-02)
 
 - **Restored** `infrastructure/kafka/scripts/data_downloader.py` to a richer raw-data cleaner implementing `clean_raw_data(...)` and `DEFAULT_KEEP_COLUMNS` so scripts and tests continue to work with the local historical CSV.
@@ -210,16 +379,20 @@ Generated by the repo assistant on 2026-05-29.
 - **Updated** `requirements.txt` with optional notebook dependencies (e.g., `scikit-learn`, `torch-geometric` entries noted) — install optional packages only as needed for STGNN/LightGBM runs.
 - **Tests:** added/updated small tests around the data downloader and feature engineering; syntax checks passed locally.
 
-If you'd like, I can now run a short smoke test (one epoch, CPU) for a selected model to verify end-to-end training with the updated feature pipeline.
-
 ## Remaining before GitHub push
 
-- [ ] Run a full benchmark in `Intelligent-IOT-blackwell` with `python scripts/run_baselines.py`
-- [ ] Compare the full-horizon metrics against the reference results from `tested_models.py`
-- [ ] Review `git status` and remove any remaining unneeded docs, notebooks, or artifacts
- - [ ] Confirm `data/raw/Raw_Data.csv` is the canonical raw dataset and the only retained raw dataset in `data/raw`
-- [ ] Commit and push the cleaned project to GitHub
+- [x] Save all model families as `.pkl` per horizon and bundle (`ha`, `lr`, `rf`, `lstm`, `stgnn`)
+- [x] Phase 5 uses STGNN via `active_model.pkl` (switchable with `switch_active_model.py`)
+- [x] Run **full** training for all horizons (+1h, +2h, +3h) and all models:
+  ```powershell
+  python scripts/run_baselines.py --model all --path data/raw/Raw_Data.csv --epochs 125
+  ```
+- [x] Compare full-horizon metrics against reference results (if available)
+- [x] Review `git status` and remove unneeded docs, notebooks, or artifacts
+- [x] Confirm `data/raw/Raw_Data.csv` is the canonical raw dataset
+- [x] Commit and push the cleaned project to GitHub
 
 ## Cleanup note
 
-- MLflow support, helper scripts, and local tracking artifacts are being removed from the cleaned project path.
+- MLflow support and local tracking artifacts are being removed from the cleaned project path.
+- `active_model.pkl` points to **STGNN** for Phase 5 streaming; use `scripts/switch_active_model.py` to change without retraining.

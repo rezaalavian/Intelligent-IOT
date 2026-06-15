@@ -1,9 +1,5 @@
-from __future__ import annotations
-
 import logging
-
 from confluent_kafka.schema_registry import SchemaRegistryClient, Schema
-
 from .config import load_config
 from .serialization import schema_str
 

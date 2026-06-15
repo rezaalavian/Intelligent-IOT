@@ -5,7 +5,6 @@ with the tuned hyperparameters and writes a JSON summary to models/saved_models.
 from datetime import datetime
 from pathlib import Path
 import json
-
 from models.spatiotemporal.train import train
 
 BEST = {
