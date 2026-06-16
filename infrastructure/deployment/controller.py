@@ -18,8 +18,8 @@ from models.model_registry import (
 
 DEFAULT_MODEL_PATH = SAVED_MODELS_DIR / "active_model.pkl"
 METRICS_PATH = SAVED_MODELS_DIR / "baseline_metrics.json"
-THRESHOLD_WARNING = 150.0
-THRESHOLD_CRITICAL = 250.0
+THRESHOLD_WARNING = 35.5
+THRESHOLD_CRITICAL = 125.5
 
 
 @dataclass
@@ -48,7 +48,7 @@ class ForecastController:
                 "model_type": result["model_type"],
                 "active_model": self.active_model_key,
                 "active_horizons": {str(h): m for h, m in sorted(self.active_horizons.items())},
-                "feature_columns": self.bundle.feature_columns,
+                #"feature_columns": self.bundle.feature_columns,
                 "lookback": self.bundle.lookback,
             }
 
