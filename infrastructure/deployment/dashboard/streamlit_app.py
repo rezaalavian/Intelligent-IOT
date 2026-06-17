@@ -99,8 +99,8 @@ def main() -> None:
     if status.get("lookback"):
         st.sidebar.write("Lookback (h):", status["lookback"])
 
-    tab_forecast, tab_alerts, tab_metrics, tab_api = st.tabs(
-        ["Forecast", "Alert simulator", "Benchmark metrics", "API probe"]
+    tab_forecast, tab_alerts, tab_metrics, tab_api, tab_live = st.tabs(
+        ["Forecast", "Alert simulator", "Benchmark metrics", "API probe", "Live"]
     )
 
     features = _default_features(controller)
@@ -211,6 +211,29 @@ def main() -> None:
                     st.code(r.json())
                 except Exception as exc:
                     st.error(str(exc))
+
+    with tab_live:
+        st.subheader("Live stream — latest per station")
+        base = api_base.rstrip("/") if "api_base" in dir() else "http://localhost:8000"
+        try:
+            import requests
+            preds = requests.get(f"{base}/live/predictions", timeout=5).json()
+            alerts = requests.get(f"{base}/live/alerts", timeout=5).json()
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"Could not reach API: {exc}")
+            preds, alerts = {}, {}
+        if not preds and not alerts:
+            st.info("No live data yet. Start the pipeline + live_state consumer.")
+        for station_id in sorted(set(preds) | set(alerts)):
+            p = preds.get(station_id, {})
+            a = alerts.get(station_id, {})
+            st.markdown(f"**{station_id}**")
+            cols = st.columns(2)
+            cols[0].metric("Forecast PM2.5 (h1)", p.get("forecast_pm25"))
+            level = a.get("level", "—")
+            cols[1].metric("Alert level", level)
+            if a.get("recommendation"):
+                st.caption(a["recommendation"])
 
 
 # Streamlit executes this file top-to-bottom on every interaction — do not guard with __main__.
