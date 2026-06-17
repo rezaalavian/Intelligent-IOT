@@ -13,7 +13,7 @@ def read_state(path: str) -> dict:
     try:
         with open(path) as fh:
             data = json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
         return {"predictions": {}, "alerts": {}}
     data.setdefault("predictions", {})
     data.setdefault("alerts", {})

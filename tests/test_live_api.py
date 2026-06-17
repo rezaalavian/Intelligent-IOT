@@ -10,9 +10,7 @@ def test_live_endpoints(tmp_path, monkeypatch):
         "alerts": {"openaq-7570": {"station_id": "openaq-7570", "level": "warning"}},
     }))
     monkeypatch.setenv("LIVE_STATE_PATH", str(store))
-    import importlib
     import infrastructure.deployment.app as app_mod
-    importlib.reload(app_mod)
     client = TestClient(app_mod.app)
 
     r = client.get("/live/predictions")
