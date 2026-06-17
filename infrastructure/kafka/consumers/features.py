@@ -1,4 +1,7 @@
 import logging
+import time
+import os
+from datetime import datetime, timezone
 
 from ..feature_adapter import to_model_features
 from ..rolling_buffer import RollingBuffer
@@ -28,14 +31,19 @@ def build_feature_record(measurement: dict, buffer: RollingBuffer) -> dict:
 
 
 def run() -> None:  # pragma: no cover - integration path
+    import base64, json
     from confluent_kafka import Consumer, Producer
     from confluent_kafka.schema_registry import SchemaRegistryClient
     from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
     from confluent_kafka.serialization import SerializationContext, MessageField
     from ..config import load_config
     from ..serialization import schema_str
+    from ..station_registry import target_id, neighbor_ids, coords
+    from ..met_join import nearest_met
 
     cfg = load_config()
+    tick_seconds = float(os.environ.get("FEATURE_TICK_SECONDS", "3600"))
+
     sr = SchemaRegistryClient({"url": cfg.schema_registry_url})
     deser = AvroDeserializer(sr, schema_str("measurement.avsc"))
     out_ser = AvroSerializer(sr, schema_str("feature.avsc"),
@@ -49,27 +57,76 @@ def run() -> None:  # pragma: no cover - integration path
     out = Producer({"bootstrap.servers": cfg.bootstrap_servers})
     dlq = Producer({"bootstrap.servers": cfg.bootstrap_servers})
     buffer = RollingBuffer(lookback=12)
+
+    latest_pm: dict[int, float] = {}
+    recent_met: list[dict] = []
+    tid = target_id()
+    target_lat, target_lon = coords(tid)
+    last_emit = 0.0
+
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None or msg.error():
-                continue
-            try:
-                rec = deser(msg.value(), SerializationContext(in_topic, MessageField.VALUE))
-                feature_rec = build_feature_record(rec, buffer)
-                out.produce(out_topic, key=rec["station_id"].encode(),
-                            value=out_ser(feature_rec, SerializationContext(out_topic, MessageField.VALUE)))
-                out.poll(0)
-            except Exception as exc:
-                log.error("feature consumer error offset=%s err=%s", msg.offset(), exc)
-                import base64, json
-                raw_val = msg.value()
-                dlq.produce(cfg.topics["deadletter"], key=msg.key(), value=json.dumps({
-                    "source_topic": in_topic, "offset": msg.offset(), "error": str(exc),
-                    "value_b64": base64.b64encode(raw_val).decode() if raw_val is not None else None,
-                }).encode())
-                dlq.poll(0)
-            consumer.commit(msg)
+                pass
+            else:
+                try:
+                    rec = deser(msg.value(), SerializationContext(in_topic, MessageField.VALUE))
+                    sid = rec.get("station_id", "")
+                    if sid.startswith("openaq-"):
+                        int_id = int(sid[len("openaq-"):])
+                        pm = rec.get("pm25")
+                        if pm is not None:
+                            latest_pm[int_id] = float(pm)
+                    else:
+                        recent_met.append(rec)
+                        if len(recent_met) > 200:
+                            recent_met = recent_met[-200:]
+                except Exception as exc:
+                    log.error("feature consumer deser error offset=%s err=%s", msg.offset(), exc)
+                    raw_val = msg.value()
+                    dlq.produce(cfg.topics["deadletter"], key=msg.key(), value=json.dumps({
+                        "source_topic": in_topic, "offset": msg.offset(), "error": str(exc),
+                        "value_b64": base64.b64encode(raw_val).decode() if raw_val is not None else None,
+                    }).encode())
+                    dlq.poll(0)
+                consumer.commit(msg)
+
+            now = time.time()
+            if now - last_emit >= tick_seconds and tid in latest_pm:
+                try:
+                    met = nearest_met(target_lat, target_lon, recent_met) or {}
+                    target_measurement = {
+                        "pm25": latest_pm.get(tid),
+                        "temperature": met.get("temperature"),
+                        "dew_point": met.get("dew_point"),
+                        "humidity": met.get("humidity"),
+                        "wind_speed": met.get("wind_speed"),
+                        "wind_dir": met.get("wind_dir"),
+                    }
+                    base_feats = to_model_features(target_measurement)
+                    neighbor_pm = [
+                        {"lat": coords(nid)[0], "lon": coords(nid)[1], "pm25": latest_pm.get(nid)}
+                        for nid in neighbor_ids()
+                    ]
+                    feats = enrich_with_diffusion(base_feats, coords(tid), neighbor_pm)
+                    station_key = "openaq-%d" % tid
+                    history = buffer.append(station_key, feats)
+                    ts_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+                    feature_rec = {
+                        "station_id": station_key,
+                        "source": "openaq",
+                        "timestamp": ts_hour,
+                        "features": feats,
+                        "history": [dict(h) for h in history],
+                    }
+                    out.produce(out_topic, key=station_key.encode(),
+                                value=out_ser(feature_rec, SerializationContext(out_topic, MessageField.VALUE)))
+                    out.poll(0)
+                    log.info("emitted feature record station=%s ts=%s feats=%s", station_key, ts_hour, list(feats.keys()))
+                except Exception as exc:
+                    log.error("feature emit error err=%s", exc)
+                last_emit = time.time()
     finally:
         out.flush(10.0)
         dlq.flush(10.0)

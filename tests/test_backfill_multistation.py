@@ -1,6 +1,27 @@
 import pandas as pd
 
-from infrastructure.kafka.scripts.backfill_multistation import build_training_frame
+from infrastructure.kafka.scripts.backfill_multistation import build_training_frame, parse_open_meteo
+
+
+def test_parse_open_meteo_to_met_by_hour():
+    payload = {"hourly": {
+        "time": ["2024-01-01T05:00", "2024-01-01T06:00"],
+        "temperature_2m": [5.0, 6.0],
+        "relativehumidity_2m": [60.0, 62.0],
+        "dewpoint_2m": [1.0, 1.5],
+        "windspeed_10m": [10.0, 11.0],
+        "winddirection_10m": [270.0, 280.0],
+    }}
+    out = parse_open_meteo(payload, 43.64543, -79.38908)
+    key = "2024-01-01 05:00:00+00:00"
+    assert key in out
+    rec = out[key][0]
+    assert rec["temperature"] == 5.0
+    assert rec["humidity"] == 60.0
+    assert rec["dew_point"] == 1.0
+    assert rec["wind_speed"] == 10.0
+    assert rec["wind_dir"] == 270.0
+    assert rec["latitude"] == 43.64543 and rec["longitude"] == -79.38908
 
 
 def test_build_training_frame_has_diffusion_and_target():
@@ -23,3 +44,4 @@ def test_build_training_frame_has_diffusion_and_target():
         assert col in df.columns
     assert df.iloc[0]["pm25"] == 14.0          # target station's pm25
     assert df.iloc[0]["upwind_pm25"] != 0.0    # neighbors contributed
+    assert "timestamp" in df.columns           # training prep keys off "timestamp"
