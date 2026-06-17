@@ -7,6 +7,30 @@ from ..met_join import nearest_met
 from analytics.flink_jobs.diffusion_features import diffusion_features
 
 
+def parse_open_meteo(payload: dict, lat: float, lon: float) -> dict:
+    """Open-Meteo archive JSON -> {hour_str: [met record]} matching build_training_frame's shape."""
+    hourly = payload.get("hourly", {})
+    times = hourly.get("time", [])
+
+    def at(key: str, i: int):
+        values = hourly.get(key) or []
+        return values[i] if i < len(values) else None
+
+    out: dict[str, list[dict]] = {}
+    for i, t in enumerate(times):
+        hour = str(pd.to_datetime(t, utc=True).floor("h"))
+        out[hour] = [{
+            "latitude": lat,
+            "longitude": lon,
+            "temperature": at("temperature_2m", i),
+            "humidity": at("relativehumidity_2m", i),
+            "dew_point": at("dewpoint_2m", i),
+            "wind_speed": at("windspeed_10m", i),
+            "wind_dir": at("winddirection_10m", i),
+        }]
+    return out
+
+
 def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFrame:
     tid = target_id()
     t_lat, t_lon = coords(tid)
@@ -41,12 +65,14 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFram
 def main() -> None:  # pragma: no cover - network I/O
     import argparse
     from pathlib import Path
+    import requests
+    from datetime import date
     from ..data_sources.openaq import fetch_openaq_location_ml
-    from ..data_sources import environment_canada as ec
     from ..station_registry import STATIONS
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True, help="YYYY-MM-DD")
+    ap.add_argument("--end", default=date.today().isoformat(), help="YYYY-MM-DD")
     ap.add_argument("--out", default="data/external/multistation/train.csv")
     ap.add_argument("--tmp", default="data/external/multistation")
     args = ap.parse_args()
@@ -61,20 +87,18 @@ def main() -> None:  # pragma: no cover - network I/O
             raise SystemExit(f"no PM2.5 column for location {sid}; columns={list(df.columns)}")
         per_station_pm[sid] = df[["datetime", pm_col]].rename(columns={pm_col: "pm25"}).dropna()
 
-    # Met snapshot keyed by hour from SWOB backfill (reuse the live client over the window).
-    met_by_hour: dict[str, list[dict]] = {}
-    for rec in ec.poll(ec_bbox_for_stations(), datetime_window=f"{args.start}T00:00:00Z/.."):
-        hour = str(pd.to_datetime(rec["datetime_utc"]).floor("h"))
-        met_by_hour.setdefault(hour, []).append(rec)
+    # Historical met from the Open-Meteo archive at the target station's coordinates.
+    t_lat, t_lon = coords(target_id())
+    resp = requests.get("https://archive-api.open-meteo.com/v1/archive", params={
+        "latitude": t_lat, "longitude": t_lon,
+        "start_date": args.start, "end_date": args.end,
+        "hourly": "temperature_2m,relativehumidity_2m,dewpoint_2m,windspeed_10m,winddirection_10m",
+        "timezone": "UTC",
+    }, timeout=60)
+    resp.raise_for_status()
+    met_by_hour = parse_open_meteo(resp.json(), t_lat, t_lon)
 
     frame = build_training_frame(per_station_pm, met_by_hour)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(args.out, index=False)
     print(f"wrote {len(frame)} rows -> {args.out}")
-
-
-def ec_bbox_for_stations() -> str:  # pragma: no cover - trivial
-    lats = [s.lat for s in STATIONS.values()]
-    lons = [s.lon for s in STATIONS.values()]
-    pad = 0.2
-    return f"{min(lons)-pad},{min(lats)-pad},{max(lons)+pad},{max(lats)+pad}"
