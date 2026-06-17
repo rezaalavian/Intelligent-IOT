@@ -160,7 +160,7 @@ if nn is not None:
     def _compute_dynamic_graph_edges(
         wind_u: float,
         wind_v: float,
-        station_coords: dict[str, tuple[float, float]] | None = None,
+        station_coords: dict[int, tuple[float, float]] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         coords = station_coords or DEFAULT_STATION_COORDS
         sources, targets, weights = [], [], []
@@ -193,7 +193,7 @@ if nn is not None:
         scaler: Any
         feature_columns: list[str]
         lookback: int = 12
-        station_coords: dict[str, tuple[float, float]] = field(default_factory=lambda: dict(DEFAULT_STATION_COORDS))
+        station_coords: dict[int, tuple[float, float]] = field(default_factory=lambda: dict(DEFAULT_STATION_COORDS))
 
         def _history_matrix(self, history: Sequence[Mapping[str, Any]]) -> np.ndarray:
             rows = []

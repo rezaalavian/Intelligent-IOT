@@ -161,9 +161,10 @@ def _load_base_frame(path: Path) -> pd.DataFrame:
         rad = np.deg2rad(frame["wind dir definition 10's deg"] * 10)
         frame["wind_u"] = frame["wind spd definition km/h"] * np.cos(rad)
         frame["wind_v"] = frame["wind spd definition km/h"] * np.sin(rad)
-    else:
+    elif "wind_u" not in frame.columns or "wind_v" not in frame.columns:
         frame["wind_u"] = 0.0
         frame["wind_v"] = 0.0
+    # else: wind_u/wind_v already supplied (e.g. multi-station backfill) — keep them
 
     return frame
 

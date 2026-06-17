@@ -2,7 +2,7 @@ import math
 
 import pandas as pd
 
-from ..station_registry import target_id, neighbor_ids, coords
+from ..station_registry import target_id, neighbor_ids, coords, STATIONS
 from ..met_join import nearest_met
 from analytics.flink_jobs.diffusion_features import diffusion_features
 
@@ -71,9 +71,7 @@ def main() -> None:  # pragma: no cover - network I/O
 
 
 def ec_bbox_for_stations() -> str:  # pragma: no cover - trivial
-    lats = [s.lat for s in __import__("infrastructure.kafka.station_registry",
-            fromlist=["STATIONS"]).STATIONS.values()]
-    lons = [s.lon for s in __import__("infrastructure.kafka.station_registry",
-            fromlist=["STATIONS"]).STATIONS.values()]
+    lats = [s.lat for s in STATIONS.values()]
+    lons = [s.lon for s in STATIONS.values()]
     pad = 0.2
     return f"{min(lons)-pad},{min(lats)-pad},{max(lons)+pad},{max(lats)+pad}"
