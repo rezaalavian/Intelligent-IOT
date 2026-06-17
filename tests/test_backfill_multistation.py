@@ -44,3 +44,4 @@ def test_build_training_frame_has_diffusion_and_target():
         assert col in df.columns
     assert df.iloc[0]["pm25"] == 14.0          # target station's pm25
     assert df.iloc[0]["upwind_pm25"] != 0.0    # neighbors contributed
+    assert "timestamp" in df.columns           # training prep keys off "timestamp"

@@ -50,7 +50,7 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFram
         ]
         diff = diffusion_features(t_lat, t_lon, wind_u, wind_v, neighbors)
         rows.append({
-            "datetime": hour,
+            "timestamp": hour,
             "temp definition °c": float(met.get("temperature") or 0.0),
             "dew point definition °c": float(met.get("dew_point") or 0.0),
             "rel hum definition %": float(met.get("humidity") or 0.0),
@@ -59,7 +59,7 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFram
             "pm25": pm_by_hour[tid][hour],
             **diff,
         })
-    return pd.DataFrame(rows).sort_values("datetime").reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
 
 
 def main() -> None:  # pragma: no cover - network I/O
