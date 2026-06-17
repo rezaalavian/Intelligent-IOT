@@ -6,7 +6,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from models.feature_recipes import RECIPES  # noqa: E402
 from models.per_horizon import build_per_horizon_bundle  # noqa: E402
 from models.model_io import save_model  # noqa: E402
-from models.model_registry import save_model_family, set_active_horizons, set_active_model  # noqa: E402
 
 
 def parse_map(spec, recipes):
