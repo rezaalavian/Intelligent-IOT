@@ -568,11 +568,12 @@ def train_and_eval(
             print("No models were executed for this horizon.")
         print("-" * 95)
 
-    out_path = Path("models/saved_models/baseline_metrics.json")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     normalized_metrics = _normalize_results(results_master)
-    with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump({"timestamp": time.time(), "results": normalized_metrics}, fh, indent=2)
+    if save_models:
+        out_path = Path("models/saved_models/baseline_metrics.json")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump({"timestamp": time.time(), "results": normalized_metrics}, fh, indent=2)
 
     if save_models:
         family_specs = [
