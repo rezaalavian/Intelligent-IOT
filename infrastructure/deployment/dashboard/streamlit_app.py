@@ -214,7 +214,7 @@ def main() -> None:
 
     with tab_live:
         st.subheader("Live stream — latest per station")
-        base = api_base.rstrip("/") if "api_base" in dir() else "http://localhost:8000"
+        base = api_base.rstrip("/")
         try:
             import requests
             preds = requests.get(f"{base}/live/predictions", timeout=5).json()
