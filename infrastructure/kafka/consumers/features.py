@@ -2,8 +2,17 @@ import logging
 
 from ..feature_adapter import to_model_features
 from ..rolling_buffer import RollingBuffer
+from analytics.flink_jobs.diffusion_features import diffusion_features
 
 log = logging.getLogger(__name__)
+
+
+def enrich_with_diffusion(target_features: dict, target_coord: tuple, neighbor_pm: list[dict]) -> dict:
+    diff = diffusion_features(target_coord[0], target_coord[1],
+                              float(target_features.get("wind_u", 0.0)),
+                              float(target_features.get("wind_v", 0.0)),
+                              neighbor_pm)
+    return {**target_features, **diff}
 
 
 def build_feature_record(measurement: dict, buffer: RollingBuffer) -> dict:

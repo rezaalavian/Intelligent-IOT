@@ -26,3 +26,13 @@ def test_history_accumulates_per_station():
     build_feature_record(base, buf)
     out = build_feature_record({**base, "pm25": 2.0}, buf)
     assert [h["pm25"] for h in out["history"]] == [1.0, 2.0]
+
+
+def test_enrich_with_diffusion_adds_three_keys():
+    from infrastructure.kafka.consumers.features import enrich_with_diffusion
+    base = {"temp definition °c": 5.0, "wind_u": 1.0, "wind_v": 0.0, "pm25": 12.0}
+    neighbors = [{"lat": 43.709444, "lon": -79.5435, "pm25": 20.0}]
+    out = enrich_with_diffusion(base, (43.64543, -79.38908), neighbors)
+    assert out["upwind_pm25"] == 20.0
+    assert "transport_potential" in out and "wind_alignment" in out
+    assert out["pm25"] == 12.0  # original preserved
