@@ -24,6 +24,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
+from infrastructure.kafka.station_registry import STATIONS as _STATIONS
 from models.forecast_bundle import ForecastBundle
 from models.model_io import save_model
 from models.model_registry import (
@@ -83,11 +84,12 @@ except Exception:
 
 
 DEFAULT_PATH = Path("data/raw/Raw_Data.csv")
-STATION_COORDS = {
-    "station_0": (43.6532, -79.3832),
-    "station_1": (43.7000, -79.4000),
-    "station_2": (43.6200, -79.3500),
-}
+FEATURE_COLS = [
+    "temp definition °c", "dew point definition °c", "rel hum definition %",
+    "wind_u", "wind_v", "pm25",
+    "upwind_pm25", "transport_potential", "wind_alignment",
+]
+STATION_COORDS = {s.id: (s.lat, s.lon) for s in _STATIONS.values()}
 NUM_STATIONS = len(STATION_COORDS)
 LOOKBACK_STEPS = 12
 
@@ -147,6 +149,7 @@ def _load_base_frame(path: Path) -> pd.DataFrame:
         "wind dir definition 10's deg",
         "pm25",
         "pm2",
+        "upwind_pm25", "transport_potential", "wind_alignment",
     ]
     for c in cols_to_numeric:
         if c in frame.columns:
@@ -213,13 +216,17 @@ def compute_dynamic_graph_edges(wind_u, wind_v, station_coords):
 
 
 def build_graph_sequences(scaled_data, raw_df, lookback=12, horizon=1):
+    station_ids = list(STATION_COORDS.keys())
+    # scaled_data is a dict {station_id: ndarray[T, F]} of per-station scaled features
     X_graphs = []
-    for t in range(len(scaled_data) - lookback - horizon + 1):
+    T = len(raw_df)
+    for t in range(T - lookback - horizon + 1):
         target_val = raw_df["target_shifted"].iloc[t + lookback - 1]
         y_tensor = torch.tensor([target_val] * NUM_STATIONS, dtype=torch.float)
-        node_feats = [scaled_data[t : t + lookback] * (1.0 + (s * 0.05)) for s in range(NUM_STATIONS)]
+        node_feats = [scaled_data[sid][t : t + lookback] for sid in station_ids]
         node_feats = torch.tensor(np.array(node_feats), dtype=torch.float).transpose(1, 2)
-        u, v = raw_df["wind_u"].iloc[t + lookback - 1], raw_df["wind_v"].iloc[t + lookback - 1]
+        u = raw_df["wind_u"].iloc[t + lookback - 1]
+        v = raw_df["wind_v"].iloc[t + lookback - 1]
         edge_index, edge_attr = compute_dynamic_graph_edges(u, v, STATION_COORDS)
         X_graphs.append(Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attr, y=y_tensor))
     return X_graphs
@@ -286,15 +293,7 @@ def train_and_eval(
         except Exception:
             pass
 
-    feature_cols = [
-        "temp definition °c",
-        "dew point definition °c",
-        "rel hum definition %",
-        "wind_u",
-        "wind_v",
-        "pm25" if "pm25" in frame.columns else "pm2",
-    ]
-    feature_cols = [c for c in feature_cols if c in frame.columns]
+    feature_cols = [c for c in FEATURE_COLS if c in frame.columns]
 
     target_col = "pm25" if "pm25" in frame.columns else "pm2"
     horizons = [int(horizon)] if horizon is not None else [1, 2, 3]
@@ -478,7 +477,13 @@ def train_and_eval(
                 run = None
             try:
                 graph_scaler = RobustScaler().fit(df_h[feature_cols])
-                scaled_all = graph_scaler.transform(df_h[feature_cols])
+                scaled_target = graph_scaler.transform(df_h[feature_cols])
+                # Build per-station dict. Fallback: replicate target window for each
+                # station node — real registry coords + real edges, no ×1.05 perturbation.
+                # Full per-station feature arrays require neighbor PM2.5 columns from
+                # the backfill frame; those are not yet in the training frame, so the
+                # fallback is recorded as DONE_WITH_CONCERNS.
+                scaled_all = {sid: scaled_target for sid in STATION_COORDS}
                 X_graphs = build_graph_sequences(scaled_all, df_h, lookback=LOOKBACK_STEPS, horizon=h)
                 g_train = X_graphs[:train_end]
                 g_val = X_graphs[train_end:val_end]
