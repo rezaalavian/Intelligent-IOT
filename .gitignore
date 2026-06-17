@@ -9,13 +9,6 @@ __pycache__/
 *.log
 *.tmp
 *.bak
-*.pkl
-!models/saved_models/active_model.pkl
-!models/saved_models/demo_model.pkl
-!models/saved_models/forecast_bundle.pkl
-!models/saved_models/*_bundle.pkl
-!models/saved_models/*_h*.pkl
-!models/saved_models/model_registry.json
 *.pt
 *.pth
 *.onnx

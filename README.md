@@ -95,7 +95,7 @@ conda activate Intelligent-IOT-blackwell
 ## 2. Start Kafka + Flink (REQUIRED for full system)
 
 docker compose up -d
-Check:
+### Check:
 docker ps
 ## 3. Register Kafka Schemas
 python -m infrastructure.kafka.register_schemas
