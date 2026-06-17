@@ -94,6 +94,11 @@ NUM_STATIONS = len(STATION_COORDS)
 LOOKBACK_STEPS = 12
 
 
+def select_feature_cols(features, available):
+    source = features if features else FEATURE_COLS
+    return [c for c in source if c in available]
+
+
 def _resolve_path(path: Path) -> Path:
     if path.exists():
         return path
@@ -266,6 +271,7 @@ def train_and_eval(
     horizon: int | None = None,
     log_to_mlflow: bool = True,
     mlflow_experiment_name: str = "Intelligent-IOT-baselines",
+    features: list[str] | None = None,
     *,
     seed: int = 42,
     weight_decay: float = 1e-4,
@@ -294,7 +300,7 @@ def train_and_eval(
         except Exception:
             pass
 
-    feature_cols = [c for c in FEATURE_COLS if c in frame.columns]
+    feature_cols = select_feature_cols(features, frame.columns)
 
     target_col = "pm25" if "pm25" in frame.columns else "pm2"
     horizons = [int(horizon)] if horizon is not None else [1, 2, 3]
@@ -562,11 +568,12 @@ def train_and_eval(
             print("No models were executed for this horizon.")
         print("-" * 95)
 
-    out_path = Path("models/saved_models/baseline_metrics.json")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     normalized_metrics = _normalize_results(results_master)
-    with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump({"timestamp": time.time(), "results": normalized_metrics}, fh, indent=2)
+    if save_models:
+        out_path = Path("models/saved_models/baseline_metrics.json")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump({"timestamp": time.time(), "results": normalized_metrics}, fh, indent=2)
 
     if save_models:
         family_specs = [
