@@ -3,7 +3,7 @@ import csv
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(".").resolve()))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from models.baselines.train_baselines import train_and_eval  # noqa: E402
 
 _BASE = ["temp definition °c", "dew point definition °c", "rel hum definition %",
