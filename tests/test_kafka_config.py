@@ -52,9 +52,9 @@ def test_pipeline_topics_and_groups(monkeypatch):
     assert c.group_ids["alerts"] == "aq-alerts"
 
 
-def test_default_location_ids_are_the_four_stations(monkeypatch):
+def test_default_location_ids_are_the_live_stations(monkeypatch):
     monkeypatch.delenv("OPENAQ_LOCATION_IDS", raising=False)
     import importlib
     import infrastructure.kafka.config as cfg
     importlib.reload(cfg)
-    assert cfg.load_config().openaq_location_ids == (7570, 1274950, 1274949, 1210341)
+    assert cfg.load_config().openaq_location_ids == (7570, 1274950, 1274949)
