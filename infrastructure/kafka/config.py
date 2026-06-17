@@ -54,7 +54,7 @@ def load_config() -> KafkaConfig:
         }),
         openaq_api_key=os.getenv("OPENAQ_API_KEY"),
         openaq_location_ids=tuple(
-            int(x) for x in os.getenv("OPENAQ_LOCATION_IDS", "7570,1274950,1274949,1210341").split(",") if x.strip()
+            int(x) for x in os.getenv("OPENAQ_LOCATION_IDS", "7570,1274950,1274949").split(",") if x.strip()
         ),
         envcanada_bbox=os.getenv("ENVCANADA_BBOX", "-80.0,43.0,-78.0,44.5"),
         sink_dir=os.getenv("SINK_DIR", "data/stream/measurements"),
