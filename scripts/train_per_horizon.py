@@ -26,8 +26,8 @@ def main():  # pragma: no cover - training I/O
     bundle = build_per_horizon_bundle(args.path, args.model, horizon_features)
     out = Path("models/saved_models/active_model.pkl")
     save_model(bundle, str(out))
-    print(f"per-horizon bundle saved: {bundle.model_type}, "
-          f"feature_columns_by_horizon={{h: len(c) for h, c in bundle.feature_columns_by_horizon.items()}}")
+    counts = {h: len(c) for h, c in bundle.feature_columns_by_horizon.items()}
+    print(f"per-horizon bundle saved: {bundle.model_type}, feature_columns_by_horizon={counts}")
 
 
 if __name__ == "__main__":  # pragma: no cover
