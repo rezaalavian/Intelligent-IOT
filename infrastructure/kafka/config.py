@@ -50,6 +50,7 @@ def load_config() -> KafkaConfig:
             "features": os.getenv("GROUP_FEATURES", "aq-features"),
             "inference": os.getenv("GROUP_INFERENCE", "aq-inference"),
             "alerts": os.getenv("GROUP_ALERTS", "aq-alerts"),
+            "livestate": os.getenv("GROUP_LIVESTATE", "aq-livestate"),
         }),
         openaq_api_key=os.getenv("OPENAQ_API_KEY"),
         openaq_location_ids=tuple(

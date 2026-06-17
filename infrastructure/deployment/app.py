@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from infrastructure.deployment.controller import ForecastController, load_controller, METRICS_PATH
+from infrastructure.kafka import live_store
 
 
 class FeaturePayload(BaseModel):
@@ -76,3 +77,13 @@ def forecast_and_alert(payload: FeaturePayload | dict) -> dict:
     forecast = controller.predict(body)
     alert = controller.evaluate_alerts({**body, **forecast})
     return {"forecast": forecast, "alert": alert}
+
+
+@app.get("/live/predictions")
+def live_predictions() -> dict:
+    return live_store.read_state(live_store.default_path())["predictions"]
+
+
+@app.get("/live/alerts")
+def live_alerts() -> dict:
+    return live_store.read_state(live_store.default_path())["alerts"]
