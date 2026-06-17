@@ -122,7 +122,7 @@ def fetch_openaq_location_ml(location_id: int, start_date: str, output_dir: str 
     agg = raw_df.groupby(["datetime", "parameter"], as_index=False).mean()
     ml_df = agg.pivot(index="datetime", columns="parameter", values="value")
     ml_df = ml_df.sort_index()
-    ml_df = ml_df.resample("1H").mean()
+    ml_df = ml_df.resample("1h").mean()
     ml_df = ml_df.interpolate(method="time")
     ml_df = ml_df.ffill().bfill()
     ml_df.to_csv(ML_CSV)

@@ -84,8 +84,13 @@ def main() -> None:  # pragma: no cover - network I/O
         df = df.rename(columns={c: c.lower() for c in df.columns})
         pm_col = next((c for c in df.columns if c.replace(".", "").replace(" ", "") in ("pm25", "pm2")), None)
         if pm_col is None:
-            raise SystemExit(f"no PM2.5 column for location {sid}; columns={list(df.columns)}")
+            print(f"WARNING: no PM2.5 archive data for location {sid} in window — skipping")
+            continue
         per_station_pm[sid] = df[["datetime", pm_col]].rename(columns={pm_col: "pm25"}).dropna()
+
+    if target_id() not in per_station_pm:
+        raise SystemExit(f"target station {target_id()} has no PM2.5 archive data in this window")
+    print(f"stations with PM2.5 data: {sorted(per_station_pm)}")
 
     # Historical met from the Open-Meteo archive at the target station's coordinates.
     t_lat, t_lon = coords(target_id())
@@ -102,3 +107,7 @@ def main() -> None:  # pragma: no cover - network I/O
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(args.out, index=False)
     print(f"wrote {len(frame)} rows -> {args.out}")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
