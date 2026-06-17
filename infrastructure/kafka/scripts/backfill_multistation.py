@@ -41,7 +41,7 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFram
 def main() -> None:  # pragma: no cover - network I/O
     import argparse
     from pathlib import Path
-    from ..data_sources.data_downloader import fetch_openaq_location_ml
+    from ..data_sources.openaq import fetch_openaq_location_ml
     from ..data_sources import environment_canada as ec
     from ..station_registry import STATIONS
 
@@ -53,10 +53,13 @@ def main() -> None:  # pragma: no cover - network I/O
 
     per_station_pm = {}
     for sid in STATIONS:
-        csv_path = fetch_openaq_location_ml(sid, args.start, args.tmp)
+        csv_path = fetch_openaq_location_ml(sid, args.start, f"{args.tmp}/loc_{sid}")
         df = pd.read_csv(csv_path)
         df = df.rename(columns={c: c.lower() for c in df.columns})
-        per_station_pm[sid] = df[["datetime", "pm25"]].dropna()
+        pm_col = next((c for c in df.columns if c.replace(".", "").replace(" ", "") in ("pm25", "pm2")), None)
+        if pm_col is None:
+            raise SystemExit(f"no PM2.5 column for location {sid}; columns={list(df.columns)}")
+        per_station_pm[sid] = df[["datetime", pm_col]].rename(columns={pm_col: "pm25"}).dropna()
 
     # Met snapshot keyed by hour from SWOB backfill (reuse the live client over the window).
     met_by_hour: dict[str, list[dict]] = {}
