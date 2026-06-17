@@ -14,6 +14,7 @@ class ForecastBundle:
     scaler: Any
     models: dict[int, Any] = field(default_factory=dict)
     scalers: dict[int, Any] | None = None
+    feature_columns_by_horizon: dict[int, list[str]] | None = None
     metrics: dict[str, Any] | None = None
     lookback: int = 12
 
@@ -22,9 +23,12 @@ class ForecastBundle:
             return self.scalers[int(horizon)]
         return self.scaler
 
-    def _feature_row(self, features: Mapping[str, Any] | Sequence[Any]) -> np.ndarray:
+    def _feature_row(self, features: Mapping[str, Any] | Sequence[Any], horizon: int | None = None) -> np.ndarray:
+        cols = self.feature_columns
+        if horizon is not None and self.feature_columns_by_horizon:
+            cols = self.feature_columns_by_horizon.get(int(horizon), cols)
         if isinstance(features, Mapping):
-            row = [float(features.get(col, 0.0) or 0.0) for col in self.feature_columns]
+            row = [float(features.get(c, 0.0) or 0.0) for c in cols]
         else:
             row = [float(v) for v in features]
         return np.asarray(row, dtype=np.float32).reshape(1, -1)
@@ -41,7 +45,7 @@ class ForecastBundle:
             raise KeyError(f"No model registered for horizon +{horizon}h")
         if hasattr(model, "predict_from_payload"):
             return float(model.predict_from_payload(features, history=history))
-        row = self._feature_row(features)
+        row = self._feature_row(features, horizon)
         scaled = self._horizon_scaler(horizon).transform(row)
         pred = model.predict(scaled)
         return float(np.asarray(pred).flatten()[0])
