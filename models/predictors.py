@@ -22,11 +22,8 @@ except Exception:  # pragma: no cover
     GATConv = None
     Data = None
 
-DEFAULT_STATION_COORDS = {
-    "station_0": (43.6532, -79.3832),
-    "station_1": (43.7000, -79.4000),
-    "station_2": (43.6200, -79.3500),
-}
+from infrastructure.kafka.station_registry import STATIONS as _STATIONS
+DEFAULT_STATION_COORDS = {s.id: (s.lat, s.lon) for s in _STATIONS.values()}
 NUM_STATIONS = len(DEFAULT_STATION_COORDS)
 
 
@@ -163,7 +160,7 @@ if nn is not None:
     def _compute_dynamic_graph_edges(
         wind_u: float,
         wind_v: float,
-        station_coords: dict[str, tuple[float, float]] | None = None,
+        station_coords: dict[int, tuple[float, float]] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         coords = station_coords or DEFAULT_STATION_COORDS
         sources, targets, weights = [], [], []
@@ -196,7 +193,7 @@ if nn is not None:
         scaler: Any
         feature_columns: list[str]
         lookback: int = 12
-        station_coords: dict[str, tuple[float, float]] = field(default_factory=lambda: dict(DEFAULT_STATION_COORDS))
+        station_coords: dict[int, tuple[float, float]] = field(default_factory=lambda: dict(DEFAULT_STATION_COORDS))
 
         def _history_matrix(self, history: Sequence[Mapping[str, Any]]) -> np.ndarray:
             rows = []
@@ -206,8 +203,11 @@ if nn is not None:
                 rows.insert(0, rows[0] if rows else [0.0] * len(self.feature_columns))
             return np.asarray(rows, dtype=np.float32)
 
-        def _build_graph(self, scaled_window: np.ndarray, wind_u: float, wind_v: float) -> Any:
-            node_feats = [scaled_window * (1.0 + (s * 0.05)) for s in range(NUM_STATIONS)]
+        def _build_graph(self, scaled_window: np.ndarray, wind_u: float, wind_v: float, station_windows=None) -> Any:
+            if station_windows is not None:
+                node_feats = list(station_windows)          # real per-station windows
+            else:
+                node_feats = [scaled_window for _ in range(NUM_STATIONS)]   # fallback: target only
             node_feats_t = torch.tensor(np.array(node_feats), dtype=torch.float).transpose(1, 2)
             edge_index, edge_attr = _compute_dynamic_graph_edges(wind_u, wind_v, self.station_coords)
             return Data(x=node_feats_t, edge_index=edge_index, edge_attr=edge_attr)
