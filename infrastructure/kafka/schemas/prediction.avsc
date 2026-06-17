@@ -1,0 +1,12 @@
+{
+  "type": "record",
+  "name": "Prediction",
+  "namespace": "intelligent.iot",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "forecasts", "type": {"type": "map", "values": "double"}},
+    {"name": "forecast_pm25", "type": "double"},
+    {"name": "model_type", "type": "string"}
+  ]
+}

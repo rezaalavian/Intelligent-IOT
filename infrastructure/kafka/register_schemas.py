@@ -27,6 +27,9 @@ def main() -> None:
     for source, (schema_file,) in SUBJECTS.items():
         register(f"{cfg.raw_topic(source)}-value", schema_file)
     register(f"{cfg.topics['measurements']}-value", "measurement.avsc")
+    register(f"{cfg.topics['features']}-value", "feature.avsc")
+    register(f"{cfg.topics['predictions']}-value", "prediction.avsc")
+    register(f"{cfg.topics['alerts']}-value", "alert.avsc")
 
 
 if __name__ == "__main__":

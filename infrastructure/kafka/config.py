@@ -32,6 +32,9 @@ def load_config() -> KafkaConfig:
     topics = {
         "measurements": os.getenv("TOPIC_MEASUREMENTS", "aq.measurements"),
         "deadletter": os.getenv("TOPIC_DEADLETTER", "aq.deadletter"),
+        "features": os.getenv("TOPIC_FEATURES", "aq.features"),
+        "predictions": os.getenv("TOPIC_PREDICTIONS", "aq.predictions"),
+        "alerts": os.getenv("TOPIC_ALERTS", "aq.alerts"),
     }
     for s in SOURCES:
         topics[f"{s}_raw"] = os.getenv(f"TOPIC_{s.upper()}_RAW", f"aq.{s}.raw")
@@ -44,6 +47,9 @@ def load_config() -> KafkaConfig:
         group_ids=MappingProxyType({
             "normalizer": os.getenv("GROUP_NORMALIZER", "aq-normalizer"),
             "sink": os.getenv("GROUP_SINK", "aq-sink"),
+            "features": os.getenv("GROUP_FEATURES", "aq-features"),
+            "inference": os.getenv("GROUP_INFERENCE", "aq-inference"),
+            "alerts": os.getenv("GROUP_ALERTS", "aq-alerts"),
         }),
         openaq_api_key=os.getenv("OPENAQ_API_KEY"),
         openaq_location_ids=tuple(
