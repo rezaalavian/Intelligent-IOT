@@ -107,13 +107,13 @@ def run() -> None:  # pragma: no cover - integration path
                     target_pm = latest_pm.get(tid)
                     if target_pm is None:
                         gap_hours = (now - last_seen_hour.get(tid, 0.0)) / 3600.0
-                        neighbor_pm = [
+                        recovery_neighbor_pm = [
                             {"lat": coords(nid)[0], "lon": coords(nid)[1], "pm25": latest_pm.get(nid)}
                             for nid in neighbor_ids()
                         ]
                         wu = float(met.get("wind_speed") or 0.0) * math.cos(math.radians(float(met.get("wind_dir") or 0.0)))
                         wv = float(met.get("wind_speed") or 0.0) * math.sin(math.radians(float(met.get("wind_dir") or 0.0)))
-                        target_pm, method = recover(target_lat, target_lon, wu, wv, neighbor_pm,
+                        target_pm, method = recover(target_lat, target_lon, wu, wv, recovery_neighbor_pm,
                                                     list(latest_pm_history), gap_hours, threshold_hours=3)
                         if target_pm is None:
                             last_emit = now
