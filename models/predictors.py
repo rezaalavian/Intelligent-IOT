@@ -1,7 +1,10 @@
 """Pickle-friendly predictors for all baseline and STGNN models."""
+import math
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 import numpy as np
+
+from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
 
 try:
     import torch
@@ -170,11 +173,11 @@ if nn is not None:
                 if i == j:
                     continue
                 c_i, c_j = coords[s_idx], coords[t_idx]
-                d_ij = np.array([c_j[0] - c_i[0], c_j[1] - c_i[1]], dtype=float)
-                dist = np.linalg.norm(d_ij)
+                dist = haversine_m(c_i[0], c_i[1], c_j[0], c_j[1])
                 if dist == 0:
                     continue
-                d_ij_norm = d_ij / dist
+                north, east = north_east_offsets_m(c_i[0], c_i[1], c_j[0], c_j[1])
+                d_ij_norm = np.array([north, east], dtype=float) / math.hypot(north, east)
                 alignment = float(np.dot(d_ij_norm, w_vec))
                 base_weight = 1.0 / (dist + 1e-5)
                 weight = base_weight * (1.0 + alignment) if alignment > 0 else base_weight * np.exp(alignment)

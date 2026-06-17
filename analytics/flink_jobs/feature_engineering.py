@@ -4,12 +4,15 @@ The project now separates feature introduction from feature transformations.
 Raw features are introduced first, then optional lag/rolling/graph transforms can be
 applied per model and horizon.
 """
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Sequence
 import numpy as np
 import pandas as pd
 import torch
 from torch import nn
+
+from .geo import haversine_m, north_east_offsets_m
 
 try:  # pragma: no cover - optional dependency
     from torch_geometric.data import Data  # type: ignore[import-not-found]
@@ -258,13 +261,13 @@ def compute_dynamic_graph_edges(wind_u: float, wind_v: float, station_coords: di
         for target_index, target_key in enumerate(station_coords.keys()):
             if source_index == target_index:
                 continue
-            source_coord = np.array(station_coords[source_key], dtype=float)
-            target_coord = np.array(station_coords[target_key], dtype=float)
-            delta = target_coord - source_coord
-            distance = float(np.linalg.norm(delta))
+            source_lat, source_lon = station_coords[source_key]
+            target_lat, target_lon = station_coords[target_key]
+            distance = haversine_m(source_lat, source_lon, target_lat, target_lon)
             if distance == 0.0:
                 continue
-            delta_norm = delta / distance
+            north, east = north_east_offsets_m(source_lat, source_lon, target_lat, target_lon)
+            delta_norm = np.array([north, east], dtype=float) / math.hypot(north, east)
             alignment = float(np.dot(delta_norm, wind_vector))
             base_weight = 1.0 / (distance + 1e-5)
             weight = base_weight * (1.0 + alignment) if alignment > 0 else base_weight * np.exp(alignment)
@@ -324,7 +327,12 @@ def compute_dynamic_edge_index(
         return torch.empty((2, 0), dtype=torch.long)
     coordinates = unique_stations.loc[:, [x_column, y_column]].to_numpy(dtype=float, copy=True)
     coordinates = np.nan_to_num(coordinates, nan=0.0)
-    pairwise = np.sqrt(((coordinates[:, None, :] - coordinates[None, :, :]) ** 2).sum(axis=-1))
+    count = len(coordinates)
+    pairwise = np.zeros((count, count), dtype=float)
+    for i in range(count):
+        for j in range(count):
+            pairwise[i, j] = haversine_m(coordinates[i, 1], coordinates[i, 0],
+                                         coordinates[j, 1], coordinates[j, 0])
     np.fill_diagonal(pairwise, np.inf)
     edges: list[tuple[int, int]] = []
     for source_index in range(len(unique_stations)):

@@ -11,6 +11,7 @@ This module keeps the project structure while reproducing the exact tested flow:
 from pathlib import Path
 import argparse
 import json
+import math
 import random
 import time
 from typing import Any
@@ -22,6 +23,7 @@ import pandas as pd
 from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
 from models.forecast_bundle import ForecastBundle
 from models.model_io import save_model
 from models.model_registry import (
@@ -196,11 +198,11 @@ def compute_dynamic_graph_edges(wind_u, wind_v, station_coords):
             if i == j:
                 continue
             c_i, c_j = station_coords[s_idx], station_coords[t_idx]
-            d_ij = np.array([c_j[0] - c_i[0], c_j[1] - c_i[1]])
-            dist = np.linalg.norm(d_ij)
+            dist = haversine_m(c_i[0], c_i[1], c_j[0], c_j[1])
             if dist == 0:
                 continue
-            d_ij_norm = d_ij / dist
+            north, east = north_east_offsets_m(c_i[0], c_i[1], c_j[0], c_j[1])
+            d_ij_norm = np.array([north, east], dtype=float) / math.hypot(north, east)
             alignment = np.dot(d_ij_norm, w_vec)
             base_weight = 1.0 / (dist + 1e-5)
             weight = base_weight * (1.0 + alignment) if alignment > 0 else base_weight * np.exp(alignment)
