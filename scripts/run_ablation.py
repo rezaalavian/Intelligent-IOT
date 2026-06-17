@@ -5,16 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from models.baselines.train_baselines import train_and_eval  # noqa: E402
-
-_BASE = ["temp definition °c", "dew point definition °c", "rel hum definition %",
-         "wind_u", "wind_v", "pm25"]
-RECIPES = {
-    "base6": list(_BASE),
-    "diffusion9": _BASE + ["upwind_pm25", "transport_potential", "wind_alignment"],
-    "base+upwind": _BASE + ["upwind_pm25"],
-    "base+transport": _BASE + ["transport_potential"],
-    "base+alignment": _BASE + ["wind_alignment"],
-}
+from models.feature_recipes import RECIPES  # noqa: E402
 
 
 def flatten_results(results_master: dict, feature_set: str) -> list[dict]:
