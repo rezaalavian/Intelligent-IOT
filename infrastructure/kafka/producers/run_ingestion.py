@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import datetime, timezone
 
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
@@ -21,7 +22,10 @@ def enabled_sources(cfg) -> dict:
         sources["openaq"] = lambda: openaq.poll(cfg.openaq_location_ids, cfg.openaq_api_key)
     else:
         log.warning("OpenAQ disabled (no API key)")
-    sources["envcanada"] = lambda: environment_canada.poll(cfg.envcanada_bbox)
+    sources["envcanada"] = lambda: environment_canada.poll(
+        cfg.envcanada_bbox,
+        datetime_window=environment_canada.recent_window(datetime.now(timezone.utc)),
+    )
     return sources
 
 

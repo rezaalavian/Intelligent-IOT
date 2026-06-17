@@ -23,4 +23,5 @@ models/saved_models/*
 !models/saved_models/README.md
 !models/saved_models/.gitkeep
 data/processed/
+data/stream/
 !data/raw/historical_rawdata.csv
