@@ -18,6 +18,7 @@
     {"name": "co", "type": ["null", "double"], "default": null},
     {"name": "o3", "type": ["null", "double"], "default": null},
     {"name": "temperature", "type": ["null", "double"], "default": null},
+    {"name": "dew_point", "type": ["null", "double"], "default": null},
     {"name": "humidity", "type": ["null", "double"], "default": null},
     {"name": "wind_speed", "type": ["null", "double"], "default": null},
     {"name": "wind_dir", "type": ["null", "double"], "default": null},

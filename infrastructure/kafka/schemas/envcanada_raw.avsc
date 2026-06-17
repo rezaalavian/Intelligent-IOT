@@ -8,6 +8,7 @@
     {"name": "latitude", "type": ["null", "double"], "default": null},
     {"name": "longitude", "type": ["null", "double"], "default": null},
     {"name": "air_temp", "type": ["null", "double"], "default": null},
+    {"name": "dew_point", "type": ["null", "double"], "default": null},
     {"name": "rel_hum", "type": ["null", "double"], "default": null},
     {"name": "wind_speed", "type": ["null", "double"], "default": null},
     {"name": "wind_dir", "type": ["null", "double"], "default": null},

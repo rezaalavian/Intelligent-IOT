@@ -155,6 +155,7 @@ _SWOB_FIELDS = {
         "avg_wnd_dir_10m_pst1hr",
     ],
     "pressure": ["stn_pres"],
+    "dew_point": ["dwpt_temp"],
 }
 
 

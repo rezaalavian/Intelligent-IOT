@@ -68,3 +68,11 @@ def test_collapse_merges_different_params_same_hour():
     assert kept[0]["pm25"] == 14.0
     assert kept[0]["no2"] == 0.02
     assert kept[0]["o3"] == 0.019
+
+
+def test_envcanada_maps_dew_point():
+    raw = {"station_id": "swob-1", "datetime_utc": "2023-01-01T14:00:00Z",
+           "air_temp": -3.2, "rel_hum": 81.0, "wind_speed": 12.0,
+           "wind_dir": 270.0, "pressure": 101.3, "dew_point": -6.1}
+    rec = nm.normalize("envcanada", raw)
+    assert rec["dew_point"] == -6.1
