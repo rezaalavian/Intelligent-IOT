@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "Alert",
+  "namespace": "intelligent.iot",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "level", "type": "string"},
+    {"name": "alert", "type": "boolean"},
+    {"name": "current_pm25", "type": ["null", "double"], "default": null},
+    {"name": "forecast_pm25", "type": "double"},
+    {"name": "recommendation", "type": "string"}
+  ]
+}

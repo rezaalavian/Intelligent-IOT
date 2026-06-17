@@ -1,0 +1,12 @@
+{
+  "type": "record",
+  "name": "Feature",
+  "namespace": "intelligent.iot",
+  "fields": [
+    {"name": "station_id", "type": "string"},
+    {"name": "source", "type": "string"},
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "features", "type": {"type": "map", "values": "double"}},
+    {"name": "history", "type": {"type": "array", "items": {"type": "map", "values": "double"}}}
+  ]
+}

@@ -11,7 +11,8 @@ def main() -> None:
     cfg = load_config()
     admin = AdminClient({"bootstrap.servers": cfg.bootstrap_servers})
     names = [cfg.raw_topic(s) for s in SOURCES] + [
-        cfg.topics["measurements"], cfg.topics["deadletter"]
+        cfg.topics["measurements"], cfg.topics["deadletter"],
+        cfg.topics["features"], cfg.topics["predictions"], cfg.topics["alerts"],
     ]
     topics = [NewTopic(n, num_partitions=cfg.partitions, replication_factor=1) for n in names]
     for name, fut in admin.create_topics(topics).items():

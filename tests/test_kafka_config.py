@@ -38,3 +38,15 @@ def test_location_ids_parsing(monkeypatch):
     import infrastructure.kafka.config as cfg
     importlib.reload(cfg)
     assert cfg.load_config().openaq_location_ids == (100, 200, 300)
+
+
+def test_pipeline_topics_and_groups(monkeypatch):
+    import importlib, infrastructure.kafka.config as cfg
+    importlib.reload(cfg)
+    c = cfg.load_config()
+    assert c.topics["features"] == "aq.features"
+    assert c.topics["predictions"] == "aq.predictions"
+    assert c.topics["alerts"] == "aq.alerts"
+    assert c.group_ids["features"] == "aq-features"
+    assert c.group_ids["inference"] == "aq-inference"
+    assert c.group_ids["alerts"] == "aq-alerts"

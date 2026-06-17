@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 _CANON_FIELDS = (
     "latitude", "longitude", "pm25", "pm10", "no", "no2", "nox",
     "so2", "co", "o3", "temperature", "humidity", "wind_speed",
-    "wind_dir", "pressure",
+    "wind_dir", "pressure", "dew_point",
 )
 
 
@@ -38,6 +38,7 @@ def normalize(source: str, raw: dict, ingested_at: datetime | None = None) -> di
         rec["wind_speed"] = raw.get("wind_speed")
         rec["wind_dir"] = raw.get("wind_dir")
         rec["pressure"] = raw.get("pressure")
+        rec["dew_point"] = raw.get("dew_point")
     elif source == "iqair":
         rec["pm25"] = raw.get("pm25")
     else:
