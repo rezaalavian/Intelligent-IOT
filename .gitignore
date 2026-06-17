@@ -13,4 +13,7 @@ __pycache__/
 *.pth
 *.onnx
 data/processed/
-data/external/multistation/
+data/stream/
+# multi-station backfill: track only the assembled train.csv, ignore the raw/intermediate downloads
+data/external/multistation/*
+!data/external/multistation/train.csv

@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--hidden-dim", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--epochs", type=int, default=60)
+    p.add_argument("--epochs", type=int, default=128)
     p.add_argument("--patience", type=int, default=8)
     p.add_argument("--no-mlflow", dest="log_to_mlflow", action="store_false")
     p.add_argument("--mlflow-experiment", default="Intelligent-IOT-spatiotemporal")
