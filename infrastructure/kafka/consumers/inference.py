@@ -11,6 +11,7 @@ def build_prediction_record(bundle, feature_rec: dict) -> dict:
         "forecasts": {k: float(v) for k, v in result["forecasts"].items()},
         "forecast_pm25": float(result["forecast_pm25"]),
         "model_type": result["model_type"],
+        "current_pm25": feature_rec["features"].get("pm25"),
     }
 
 

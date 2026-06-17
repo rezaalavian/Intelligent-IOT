@@ -21,3 +21,4 @@ def test_build_prediction_record():
     assert out["forecasts"] == {"h1": 12.0, "h2": 13.0, "h3": 14.0}
     assert out["forecast_pm25"] == 12.0
     assert out["model_type"] == "stgnn"
+    assert out["current_pm25"] == 14.0
