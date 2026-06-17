@@ -124,6 +124,15 @@ def scrape_environment_canada(climate_id: str, province: str, start_year: int, e
 GEOMET_BASE = "https://api.weather.gc.ca/collections/swob-realtime/items"
 log = logging.getLogger(__name__)
 
+
+def recent_window(now: datetime, hours: int = 2) -> str:
+    """RFC3339 `start/end` interval for the last `hours`, for the SWOB datetime filter."""
+    from datetime import timedelta
+
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    start = now - timedelta(hours=hours)
+    return f"{start.strftime(fmt)}/{now.strftime(fmt)}"
+
 # canonical raw field -> ordered SWOB property base-name candidates.
 # SWOB stations report under different instrument/averaging variants (10m
 # anemometer at 1/2/10-minute averages, precip-gauge wind, etc.), so each

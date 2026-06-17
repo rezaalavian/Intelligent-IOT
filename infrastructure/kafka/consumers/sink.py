@@ -26,7 +26,7 @@ def append_record(base_dir: str, rec: dict) -> None:
         combined = pd.concat([existing, new], ignore_index=True)
     else:
         combined = new
-    combined = combined.drop_duplicates(subset="dedup_key", keep="last").reset_index(drop=True)
+    combined = combined.groupby("dedup_key", as_index=False, sort=False).last()
     combined.to_parquet(path, index=False)
 
 

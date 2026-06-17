@@ -50,8 +50,16 @@ def dedup_key(rec: dict) -> str:
 
 
 def collapse_same_hour(records: list[dict]) -> list[dict]:
-    by_key = {dedup_key(r): r for r in records}  # later wins
-    return list(by_key.values())
+    merged: dict[str, dict] = {}
+    for r in records:
+        k = dedup_key(r)
+        if k not in merged:
+            merged[k] = dict(r)
+        else:
+            for field, val in r.items():
+                if val is not None:
+                    merged[k][field] = val
+    return list(merged.values())
 
 
 def run() -> None:  # pragma: no cover - integration path
