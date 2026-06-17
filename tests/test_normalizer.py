@@ -55,4 +55,16 @@ def test_dedup_key_and_same_hour_collapse():
          "timestamp": datetime(2023, 1, 1, 14, 0, tzinfo=timezone.utc), "pm25": 2.0}
     assert nm.dedup_key(a) == nm.dedup_key(b)
     kept = nm.collapse_same_hour([a, b])
-    assert len(kept) == 1 and kept[0]["pm25"] == 2.0  # keep last
+    assert len(kept) == 1 and kept[0]["pm25"] == 2.0  # last non-null wins
+
+
+def test_collapse_merges_different_params_same_hour():
+    ts = datetime(2023, 1, 1, 14, 0, tzinfo=timezone.utc)
+    a = {"station_id": "s", "source": "openaq", "timestamp": ts, "pm25": 14.0, "no2": None}
+    b = {"station_id": "s", "source": "openaq", "timestamp": ts, "pm25": None, "no2": 0.02}
+    c = {"station_id": "s", "source": "openaq", "timestamp": ts, "pm25": None, "o3": 0.019}
+    kept = nm.collapse_same_hour([a, b, c])
+    assert len(kept) == 1
+    assert kept[0]["pm25"] == 14.0
+    assert kept[0]["no2"] == 0.02
+    assert kept[0]["o3"] == 0.019
