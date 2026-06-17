@@ -1,11 +1,14 @@
 import logging
+import math
 import time
 import os
+from collections import deque
 from datetime import datetime, timezone
 
 from ..feature_adapter import to_model_features
 from ..rolling_buffer import RollingBuffer
 from analytics.flink_jobs.diffusion_features import diffusion_features
+from analytics.recovery.spatial_recovery import recover
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +63,8 @@ def run() -> None:  # pragma: no cover - integration path
 
     latest_pm: dict[int, float] = {}
     recent_met: list[dict] = []
+    last_seen_hour: dict[int, float] = {}
+    latest_pm_history: deque = deque(maxlen=12)
     tid = target_id()
     target_lat, target_lon = coords(tid)
     last_emit = 0.0
@@ -78,6 +83,9 @@ def run() -> None:  # pragma: no cover - integration path
                         pm = rec.get("pm25")
                         if pm is not None:
                             latest_pm[int_id] = float(pm)
+                            if int_id == tid:
+                                last_seen_hour[int_id] = time.time()
+                                latest_pm_history.append(float(pm))
                     else:
                         recent_met.append(rec)
                         if len(recent_met) > 200:
@@ -93,11 +101,26 @@ def run() -> None:  # pragma: no cover - integration path
                 consumer.commit(msg)
 
             now = time.time()
-            if now - last_emit >= tick_seconds and tid in latest_pm:
+            if now - last_emit >= tick_seconds:
                 try:
                     met = nearest_met(target_lat, target_lon, recent_met) or {}
+                    target_pm = latest_pm.get(tid)
+                    if target_pm is None:
+                        gap_hours = (now - last_seen_hour.get(tid, 0.0)) / 3600.0
+                        neighbor_pm = [
+                            {"lat": coords(nid)[0], "lon": coords(nid)[1], "pm25": latest_pm.get(nid)}
+                            for nid in neighbor_ids()
+                        ]
+                        wu = float(met.get("wind_speed") or 0.0) * math.cos(math.radians(float(met.get("wind_dir") or 0.0)))
+                        wv = float(met.get("wind_speed") or 0.0) * math.sin(math.radians(float(met.get("wind_dir") or 0.0)))
+                        target_pm, method = recover(target_lat, target_lon, wu, wv, neighbor_pm,
+                                                    list(latest_pm_history), gap_hours, threshold_hours=3)
+                        if target_pm is None:
+                            last_emit = now
+                            continue
+                        log.info("recovered target pm25=%.2f via %s (gap=%.1fh)", target_pm, method, gap_hours)
                     target_measurement = {
-                        "pm25": latest_pm.get(tid),
+                        "pm25": target_pm,
                         "temperature": met.get("temperature"),
                         "dew_point": met.get("dew_point"),
                         "humidity": met.get("humidity"),
