@@ -36,7 +36,12 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict, target_gases=N
     t_lat, t_lon = coords(tid)
     pm_by_hour: dict[int, dict[str, float]] = {}
     for sid, frame in per_station_pm.items():
-        pm_by_hour[sid] = {str(r["datetime"]): float(r["pm25"]) for _, r in frame.iterrows()}
+        # Floor to the hour so PM keys match the met/gas keys (which are floored);
+        # avoids silently all-zero joins if a source ever carries sub-hour timestamps.
+        pm_by_hour[sid] = {
+            str(pd.to_datetime(r["datetime"], utc=True).floor("h")): float(r["pm25"])
+            for _, r in frame.iterrows()
+        }
     gases = target_gases or {}
     rows = []
     for hour in sorted(pm_by_hour.get(tid, {})):
