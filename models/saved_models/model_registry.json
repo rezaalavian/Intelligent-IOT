@@ -7,18 +7,14 @@
   },
   "active_path": "models/saved_models/active_model.pkl",
   "families": {
-    "lr": {
-      "model_type": "linear_regression",
-      "bundle": "models/saved_models/lr_bundle.pkl",
+    "rf": {
+      "model_type": "gradient_boosting_rf",
+      "bundle": "models/saved_models/rf_bundle.pkl",
       "horizons": [
-        1,
-        2,
         3
       ],
       "per_horizon": [
-        "lr_h1.pkl",
-        "lr_h2.pkl",
-        "lr_h3.pkl"
+        "rf_h3.pkl"
       ]
     }
   }
