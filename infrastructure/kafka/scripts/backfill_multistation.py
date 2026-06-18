@@ -31,12 +31,13 @@ def parse_open_meteo(payload: dict, lat: float, lon: float) -> dict:
     return out
 
 
-def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFrame:
+def build_training_frame(per_station_pm: dict, met_by_hour: dict, target_gases=None) -> pd.DataFrame:
     tid = target_id()
     t_lat, t_lon = coords(tid)
     pm_by_hour: dict[int, dict[str, float]] = {}
     for sid, frame in per_station_pm.items():
         pm_by_hour[sid] = {str(r["datetime"]): float(r["pm25"]) for _, r in frame.iterrows()}
+    gases = target_gases or {}
     rows = []
     for hour in sorted(pm_by_hour.get(tid, {})):
         met = nearest_met(t_lat, t_lon, met_by_hour.get(hour, [])) or {}
@@ -49,6 +50,7 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFram
             for nid in neighbor_ids()
         ]
         diff = diffusion_features(t_lat, t_lon, wind_u, wind_v, neighbors)
+        g = gases.get(hour, {})
         rows.append({
             "timestamp": hour,
             "temp definition °c": float(met.get("temperature") or 0.0),
@@ -58,6 +60,10 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict) -> pd.DataFram
             "wind_v": wind_v,
             "pm25": pm_by_hour[tid][hour],
             **diff,
+            "no": float(g.get("no") or 0.0),
+            "no2": float(g.get("no2") or 0.0),
+            "nox": float(g.get("nox") or 0.0),
+            "o3": float(g.get("o3") or 0.0),
         })
     return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
 
@@ -92,6 +98,20 @@ def main() -> None:  # pragma: no cover - network I/O
         raise SystemExit(f"target station {target_id()} has no PM2.5 archive data in this window")
     print(f"stations with PM2.5 data: {sorted(per_station_pm)}")
 
+    # Build target_gases from the target station's archive frame (has no,no2,nox,o3 columns).
+    tid = target_id()
+    target_df = pd.read_csv(fetch_openaq_location_ml(tid, args.start, f"{args.tmp}/loc_{tid}"))
+    target_df = target_df.rename(columns={c: c.lower() for c in target_df.columns})
+    target_gases = {}
+    for _, row in target_df.iterrows():
+        hour = str(pd.to_datetime(row["datetime"], utc=True).floor("h"))
+        target_gases[hour] = {
+            "no":  row.get("no"),
+            "no2": row.get("no2"),
+            "nox": row.get("nox"),
+            "o3":  row.get("o3"),
+        }
+
     # Historical met from the Open-Meteo archive at the target station's coordinates.
     t_lat, t_lon = coords(target_id())
     resp = requests.get("https://archive-api.open-meteo.com/v1/archive", params={
@@ -103,7 +123,7 @@ def main() -> None:  # pragma: no cover - network I/O
     resp.raise_for_status()
     met_by_hour = parse_open_meteo(resp.json(), t_lat, t_lon)
 
-    frame = build_training_frame(per_station_pm, met_by_hour)
+    frame = build_training_frame(per_station_pm, met_by_hour, target_gases=target_gases)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(args.out, index=False)
     print(f"wrote {len(frame)} rows -> {args.out}")
