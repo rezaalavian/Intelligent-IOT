@@ -169,7 +169,5 @@ conda run -n Intelligent-IOT-blackwell streamlit run infrastructure/deployment/d
 - `docs/PIPELINE_OVERVIEW.md` explains the end-to-end flow.
 - `docs/DATA_GUIDE.md` explains the canonical data source and live ingestion policy.
 
-## Evaluation and CI
-- `evaluation/run_benchmarks.py` measures MAE, RMSE, and inference latency. The benchmark harness also computes R² and saves per-horizon summaries.
-- Additional evaluation metrics available in the `evaluation` suite: early-warning lead time, alert precision/recall/F1 (for threshold-based alarms), calibration scores (CRPS), and throughput/latency under synthetic streaming loads.
+## CI
 - `.github/workflows/ci.yml` runs the smoke tests on every push and pull request.
