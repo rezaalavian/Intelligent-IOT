@@ -162,6 +162,9 @@ conda run -n Intelligent-IOT-blackwell streamlit run infrastructure/deployment/d
 - The benchmark harness uses a bounded sample for quick smoke tests, while the trainer can run on the full historical dataset.
 
 ## Documentation
+- **`docs/PROJECT_GUIDE.md` — start here. The complete, presentation-ready guide to the whole project (what, why, how, run/test, code references).**
+- `docs/ARCHITECTURE.md` explains the layered architecture and design rationale.
+- `docs/MODEL_RESULTS.md` has the authoritative model metrics and findings.
 - `docs/ENV_SETUP.md` explains the environment.
 - `docs/DEV_ENV.md` contains developer setup notes.
 - `models/saved_models/README.md` explains model artifact formats.
