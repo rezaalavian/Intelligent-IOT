@@ -10,7 +10,7 @@ from models.baselines.train_baselines import train_and_eval, _resolve_path
 
 
 def main() -> int:
-    data_path = _resolve_path(Path("data/raw/Raw_Data.csv"))
+    data_path = _resolve_path(Path("data/external/multistation/train.csv"))
     print(f"Training all models and saving .pkl artifacts from {data_path}")
     train_and_eval("all", data_path, epochs=125, save_models=True)
     active = ROOT / "models" / "saved_models" / "active_model.pkl"
