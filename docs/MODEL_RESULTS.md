@@ -19,17 +19,19 @@ numbers to use for the report.
 
 | Horizon | Linear Regression | Random Forest | LSTM | STGNN | Historical Avg |
 |---|---|---|---|---|---|
-| **+1 h** | **0.902** / 1.33 / 2.16 | 0.901 / 1.36 / 2.18 | 0.801 / 2.07 / 3.09 | 0.865 / – / 2.53 | ~0 / 4.90 / 6.91 |
-| **+2 h** | 0.776 / 2.08 / 3.28 | **0.784** / 2.05 / 3.21 | 0.698 / 2.57 / 3.81 | 0.767 / – / 3.33 | ~0 / 4.91 / 6.92 |
-| **+3 h** | 0.649 / 2.65 / 4.10 | **0.678** / 2.53 / 3.93 | 0.605 / 2.94 / 4.35 | 0.615 / – / 4.28 | ~0 / 4.91 / 6.92 |
+| **+1 h** | 0.902 / 1.34 / 2.16 | **0.903 / 1.34 / 2.15** | 0.795 / 2.12 / 3.11 | 0.865 / 1.77 / 2.53 | ~0 / 4.88 / 6.89 |
+| **+2 h** | 0.774 / 2.10 / 3.28 | **0.787 / 2.04 / 3.18** | 0.688 / 2.67 / 3.84 | 0.767 / 2.35 / 3.33 | ~0 / 4.88 / 6.89 |
+| **+3 h** | 0.645 / 2.68 / 4.10 | **0.682 / 2.51 / 3.88** | 0.587 / 2.98 / 4.42 | 0.615 / 2.97 / 4.28 | ~0 / 4.88 / 6.89 |
 
-*(STGNN column is the **fixed** model — see "STGNN" section below; original values were −2.835 / −2.762 at +2h/+3h. MAE not re-captured in the targeted fix run.)*
+*(All five models retrained on the deployed 13-feature `with_pollutants` config; numbers match
+`models/saved_models/baseline_metrics.json`. **RF (bold) is the deployed model.** STGNN is the
+**fixed** model — see the STGNN section; its original h2/h3 were −2.835 / −2.762.)*
 
 ## Findings
 - **Linear Regression ≈ Random Forest, both best.** RF edges LR slightly at +2 h / +3 h;
   LR is near-identical and simpler/more interpretable. Both far exceed the Historical
   Average baseline.
-- **LSTM** is solid but consistently behind the tabular models (0.80 / 0.70 / 0.61).
+- **LSTM** is solid but consistently behind the tabular models (0.80 / 0.69 / 0.59).
 - **The wind-aware diffusion features carry real signal** for the tabular models — the
   ablation (`scripts/run_ablation.py`) shows `upwind_pm25` giving a small, consistent lift,
   growing with horizon.
