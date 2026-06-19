@@ -1,9 +1,9 @@
 # Pipeline Overview
 
-1. Historical data lives in `data/raw/historical_rawdata.csv`.
-2. Live data should enter through the API-first ingestion layer and Kafka topics.
+1. Training data lives in `data/external/multistation/train.csv`, assembled by `infrastructure/kafka/scripts/backfill_multistation.py`.
+2. Live data enters through the API-first ingestion layer and Kafka topics.
 3. `analytics/features/feature_engineering.py` builds the hourly feature table.
-4. `models/spatiotemporal/train.py` trains the multi-horizon forecasting scaffold.
+4. `models/baselines/train_baselines.py` trains the multi-horizon baselines (HA, LR, RF, LSTM, STGNN).
 5. `infrastructure/deployment/controller.py` loads the saved model and emits alerts.
 
 Recommended research direction:
