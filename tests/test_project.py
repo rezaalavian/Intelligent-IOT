@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
-from analytics.flink_jobs.adjacency_matrix import compute_adjacency
-from analytics.flink_jobs.feature_engineering import compute_rolling_features, introduce_raw_features
-from analytics.flink_jobs.model_inference import predict_record
+from analytics.features.adjacency_matrix import compute_adjacency
+from analytics.features.feature_engineering import compute_rolling_features, introduce_raw_features
+from analytics.features.model_inference import predict_record
 from infrastructure.deployment.controller import ForecastController
 from infrastructure.kafka.scripts.data_downloader import DEFAULT_KEEP_COLUMNS, clean_raw_data
 from models.model_io import load_model, save_model

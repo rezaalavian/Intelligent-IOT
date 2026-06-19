@@ -91,7 +91,7 @@ snapshot, emitting a 9-feature record to `aq.features`. Distances use the
 Haversine great-circle (not Euclidean); wind alignment uses a local north-east
 bearing.
 *Files:* `infrastructure/kafka/consumers/features.py`,
-`analytics/flink_jobs/{geo,diffusion_features}.py`, `infrastructure/kafka/{feature_adapter,met_join,rolling_buffer}.py`.
+`analytics/features/{geo,diffusion_features}.py`, `infrastructure/kafka/{feature_adapter,met_join,rolling_buffer}.py`.
 *Tested:* pure functions unit-tested; the live hourly-tick `run()` (with diffusion
 + recovery) has **not yet been run end-to-end** (see §7).
 
@@ -133,7 +133,7 @@ end-to-end run pending (see §7).
   influence on the target is weighted by `1/distance × wind-alignment` (upwind
   neighbors amplified, downwind suppressed). The same weighting drives the
   diffusion *features*, the STGNN graph *edges*, and Phase 4 *recovery*.
-- **Great-circle geometry** everywhere (`analytics/flink_jobs/geo.py`) — never
+- **Great-circle geometry** everywhere (`analytics/features/geo.py`) — never
   Euclidean on lat/lon.
 - **Historical met** for training comes from the Open-Meteo archive (per-station
   coordinates); SWOB realtime only covers recent data.

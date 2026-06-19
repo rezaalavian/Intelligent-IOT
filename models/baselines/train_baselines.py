@@ -23,7 +23,7 @@ import pandas as pd
 from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
+from analytics.features.geo import haversine_m, north_east_offsets_m
 from infrastructure.kafka.station_registry import STATIONS as _STATIONS
 from models.forecast_bundle import ForecastBundle
 from models.model_io import save_model

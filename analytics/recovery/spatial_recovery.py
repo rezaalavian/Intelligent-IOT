@@ -1,6 +1,6 @@
 import math
 
-from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
+from analytics.features.geo import haversine_m, north_east_offsets_m
 
 
 def wind_weighted_estimate(t_lat, t_lon, wind_u, wind_v, neighbors):

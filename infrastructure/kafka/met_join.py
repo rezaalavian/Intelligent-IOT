@@ -1,4 +1,4 @@
-from analytics.flink_jobs.geo import haversine_m
+from analytics.features.geo import haversine_m
 
 
 def nearest_met(lat: float, lon: float, met_records: list[dict]) -> dict | None:

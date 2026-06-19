@@ -4,7 +4,7 @@ import pandas as pd
 
 from ..station_registry import target_id, neighbor_ids, coords, STATIONS
 from ..met_join import nearest_met
-from analytics.flink_jobs.diffusion_features import diffusion_features
+from analytics.features.diffusion_features import diffusion_features
 
 
 def parse_open_meteo(payload: dict, lat: float, lon: float) -> dict:

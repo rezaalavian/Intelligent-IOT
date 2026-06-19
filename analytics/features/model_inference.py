@@ -1,4 +1,4 @@
-"""Flink-friendly inference helpers for CPU deployment."""
+"""Inference helpers for CPU deployment."""
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from models.forecast_bundle import ForecastBundle, is_forecast_bundle

@@ -1,7 +1,7 @@
 """Model artifact helpers.
 
 Use joblib/pickle for classical ML models and portable export formats for deep models.
-The Flink side should load one artifact once per task and reuse it for all records.
+The consumer should load one artifact once per task and reuse it for all records.
 """
 from pathlib import Path
 from typing import Any

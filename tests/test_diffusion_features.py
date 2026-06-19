@@ -1,4 +1,4 @@
-from analytics.flink_jobs.diffusion_features import diffusion_features
+from analytics.features.diffusion_features import diffusion_features
 
 TARGET = (43.64543, -79.38908)  # Downtown
 

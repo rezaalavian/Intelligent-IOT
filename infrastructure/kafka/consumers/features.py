@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from ..feature_adapter import to_model_features
 from ..rolling_buffer import RollingBuffer
-from analytics.flink_jobs.diffusion_features import diffusion_features
+from analytics.features.diffusion_features import diffusion_features
 from analytics.recovery.spatial_recovery import recover
 
 log = logging.getLogger(__name__)

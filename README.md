@@ -38,7 +38,7 @@ infrastructure/
     controller.py
     dashboard/
 analytics/
-  flink_jobs/
+  features/
   recovery/
 models/
   baselines/
@@ -125,7 +125,7 @@ conda run -n Intelligent-IOT python infrastructure/kafka/scripts/mock_producer.p
 Run the feature engineering demo:
 
 ```powershell
-conda run -n Intelligent-IOT python -m analytics.flink_jobs.feature_engineering
+conda run -n Intelligent-IOT python -m analytics.features.feature_engineering
 ```
 
 Train the baseline model:
