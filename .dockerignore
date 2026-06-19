@@ -1,0 +1,9 @@
+.git
+.venv
+.venv311
+data
+models/saved_models
+__pycache__
+*.pyc
+.pytest_cache
+.specs

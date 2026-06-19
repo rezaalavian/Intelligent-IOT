@@ -1,0 +1,18 @@
+# Isolated Python 3.11 training image — avoids the py3.13 TF+torch+lightgbm segfault
+# and matches the deploy scikit-learn pin. Repo is mounted at run time; this image
+# only carries the installed dependencies.
+FROM python:3.11-slim
+
+# libgomp1: lightgbm native runtime. build-essential: compile sdist-only deps (e.g. pykrige).
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+# torch is conda-managed in environment.yml (not in requirements.txt) — install the CPU
+# build explicitly so torch + torch_geometric work in this image.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Default: drop into a shell; training commands are passed at `docker run`.
+CMD ["bash"]
