@@ -24,7 +24,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from analytics.features.geo import haversine_m, north_east_offsets_m
-from infrastructure.kafka.station_registry import STATIONS as _STATIONS
+from infrastructure.kafka.station_registry import STATIONS as _STATIONS, target_id as _target_id
 from models.forecast_bundle import ForecastBundle
 from models.model_io import save_model
 from models.model_registry import (
@@ -479,35 +479,75 @@ def train_and_eval(
             else:
                 run = None
             try:
-                graph_scaler = RobustScaler().fit(df_h[feature_cols])
-                scaled_target = graph_scaler.transform(df_h[feature_cols])
-                # Build per-station dict. Fallback: replicate target window for each
-                # station node — real registry coords + real edges, no ×1.05 perturbation.
-                # Full per-station feature arrays require neighbor PM2.5 columns from
-                # the backfill frame; those are not yet in the training frame, so the
-                # fallback is recorded as DONE_WITH_CONCERNS.
-                scaled_all = {sid: scaled_target for sid in STATION_COORDS}
+                # Real per-station node features: each node gets its OWN pm25 column
+                # (pm25_<neighbour> from the backfill); all other features are the
+                # target-centric met/wind/diffusion/gas values shared across nodes.
+                # Scaler is fit on TRAIN rows only (no leakage), consistent with the
+                # tabular models.
+                target_sid = _target_id()
+                pm_in_feats = "pm25" in feature_cols
+                graph_scaler = RobustScaler().fit(df_h[feature_cols].iloc[:train_end])
+
+                def _node_matrix(sid):
+                    feat = df_h[feature_cols].copy()
+                    ncol = f"pm25_{sid}"
+                    if pm_in_feats and sid != target_sid and ncol in df_h.columns:
+                        feat["pm25"] = df_h[ncol].values
+                    return graph_scaler.transform(feat)
+
+                scaled_all = {sid: _node_matrix(sid) for sid in STATION_COORDS}
                 X_graphs = build_graph_sequences(scaled_all, df_h, lookback=LOOKBACK_STEPS, horizon=h)
-                g_train = X_graphs[:train_end]
-                g_val = X_graphs[train_end:val_end]
-                g_test = X_graphs[val_end:]
+                # Split the graph-sequence list to match the tabular row split: a graph at
+                # index t predicts the row at t+lookback-1, so shift the boundaries by
+                # (lookback-1) to keep each split's prediction row in the same partition.
+                lb = LOOKBACK_STEPS
+                g_tr_end = max(0, train_end - lb + 1)
+                g_va_end = max(g_tr_end, val_end - lb + 1)
+                g_train = X_graphs[:g_tr_end]
+                g_val = X_graphs[g_tr_end:g_va_end]
+                g_test = X_graphs[g_va_end:]
 
                 loader_tr = PyGDataLoader(g_train, batch_size=64, shuffle=False)
                 loader_va = PyGDataLoader(g_val, batch_size=128, shuffle=False)
                 loader_te = PyGDataLoader(g_test, batch_size=128, shuffle=False)
 
+                torch.manual_seed(seed)
                 stgnn = AirQualitySTGNN(num_features=len(feature_cols), num_timesteps_input=LOOKBACK_STEPS)
-                opt = torch.optim.AdamW(stgnn.parameters(), lr=0.002, weight_decay=1e-3)
+                opt = torch.optim.AdamW(stgnn.parameters(), lr=0.001, weight_decay=1e-3)
                 criterion = nn.MSELoss()
 
-                stgnn.train()
-                for _ in range(25):
+                def _val_loss():
+                    stgnn.eval()
+                    tot, cnt = 0.0, 0
+                    with torch.no_grad():
+                        for batch in loader_va:
+                            out = stgnn(batch)
+                            tot += criterion(out, batch.y.flatten()).item() * out.numel()
+                            cnt += out.numel()
+                    return tot / max(cnt, 1)
+
+                # Gradient clipping + early stopping on validation stabilize training
+                # (without them some horizons diverged — negative train R2).
+                best_val, best_state, patience, bad = float("inf"), None, 10, 0
+                for _epoch in range(80):
+                    stgnn.train()
                     for batch in loader_tr:
                         opt.zero_grad()
                         out = stgnn(batch)
                         loss = criterion(out, batch.y.flatten())
                         loss.backward()
+                        torch.nn.utils.clip_grad_norm_(stgnn.parameters(), 1.0)
                         opt.step()
+                    vl = _val_loss()
+                    if vl < best_val - 1e-6:
+                        best_val, bad = vl, 0
+                        best_state = {k: v.detach().clone() for k, v in stgnn.state_dict().items()}
+                    else:
+                        bad += 1
+                        if bad >= patience:
+                            break
+                if best_state is not None:
+                    stgnn.load_state_dict(best_state)
 
                 stgnn.eval()
 

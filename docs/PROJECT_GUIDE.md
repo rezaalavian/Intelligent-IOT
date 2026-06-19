@@ -237,26 +237,24 @@ All trained in `models/baselines/train_baselines.py`; inference wrappers in `mod
 
 | Horizon | Linear Regression | **Random Forest** | LSTM | STGNN | Historical Avg |
 |---|---|---|---|---|---|
-| **+1 h** | 0.902 / 1.33 / 2.16 | **0.901 / 1.36 / 2.18** | 0.801 / 2.07 / 3.09 | 0.792 / 2.12 / 3.15 | ~0 / 4.90 / 6.91 |
-| **+2 h** | 0.776 / 2.08 / 3.28 | **0.784 / 2.05 / 3.21** | 0.698 / 2.57 / 3.81 | −2.835 / 9.00 / 13.56 | ~0 / 4.91 / 6.92 |
-| **+3 h** | 0.649 / 2.65 / 4.10 | **0.678 / 2.53 / 3.93** | 0.605 / 2.94 / 4.35 | −2.762 / 9.04 / 13.43 | ~0 / 4.91 / 6.92 |
+| **+1 h** | 0.902 / 1.33 / 2.16 | **0.901 / 1.36 / 2.18** | 0.801 / 2.07 / 3.09 | 0.865 / – / 2.53 | ~0 / 4.90 / 6.91 |
+| **+2 h** | 0.776 / 2.08 / 3.28 | **0.784 / 2.05 / 3.21** | 0.698 / 2.57 / 3.81 | 0.767 / – / 3.33 | ~0 / 4.91 / 6.92 |
+| **+3 h** | 0.649 / 2.65 / 4.10 | **0.678 / 2.53 / 3.93** | 0.605 / 2.94 / 4.35 | 0.615 / – / 4.28 | ~0 / 4.91 / 6.92 |
 
 - **LR and RF are both excellent and far ahead of the baseline.** RF edges LR at the harder +2h/+3h
   horizons; both crush Historical Average.
 - **LSTM is consistently behind the tabular models.** On this dataset the persistence (`pm25`) feature plus
   the engineered diffusion features capture the temporal signal already, so the LSTM's extra machinery does
   not pay off — and its artifact is far larger (~390 KB vs LR's ~6.5 KB).
-- **STGNN is structurally broken at +2h/+3h** (R² ≈ −2.8, *worse than guessing*). This is a genuine finding
-  with two diagnosed root causes (`docs/MODEL_RESULTS.md`):
-  1. **Replicated-node graph.** Neighbour PM2.5 columns are not yet in the training frame, so all three
-     graph nodes carry the *same* target-station window — the "spatial" graph has no real spatial signal to
-     learn (`train_baselines.py:489`).
-  2. **Split-index misalignment.** The train/val/test indices computed on the full frame are reused on the
-     shorter graph-sequence list; the mismatch grows with horizon, exactly matching h1-fine / h2-h3-collapse
-     (`train_baselines.py:491`).
-  A sweep confirmed it is structural, not under-training (h3 stays negative at 5/25/80 epochs).
+- **STGNN was broken (R² ≈ −2.8 at +2h/+3h) and is now fixed** (0.865 / 0.767 / 0.615). The collapse had
+  two diagnosed causes — a **replicated-node graph** (all nodes carried the same target window) and a
+  **split-index misalignment** (row indices applied to the shorter graph-sequence list) — plus **training
+  instability** (no gradient clipping / early stopping). The fix gives the graph **real per-station nodes**
+  (per-neighbour `pm25_<id>` columns), aligns the split, fits the scaler on train rows only, and adds
+  gradient clipping + early stopping. STGNN now trains correctly and is competitive, but still trails RF at
+  every horizon. Full detail in `docs/MODEL_RESULTS.md`.
 
-**Decision:** deploy tabular. STGNN is excluded (broken); LSTM is dominated. The chosen model is
+**Decision:** deploy tabular. STGNN, once fixed, is competitive but still behind RF; LSTM is dominated. The chosen model is
 **per-horizon Random Forest on the 13-feature `with_pollutants` recipe.**
 
 > Honest framing for the deck: the diffusion *features* (inside LR/RF) clearly work; the STGNN *graph*, in
@@ -447,7 +445,7 @@ usable window began.
 | Stream processor | Pure-Python Kafka consumers | Apache Flink | Hourly, low-volume, single-target; reuse ML code directly; no JVM/serialization overhead |
 | Messaging format | Avro + Schema Registry | JSON | Typed contract, compact, controlled evolution |
 | Distance metric | Haversine (great-circle) | Euclidean on lat/lon | Earth is curved; lon/lat are angles — flat distance distorts wind alignment |
-| Deployed model | Per-horizon Random Forest (LightGBM) | LSTM, STGNN, LR | Best accuracy; non-linear interactions; LSTM dominated; STGNN broken |
+| Deployed model | Per-horizon Random Forest (LightGBM) | LSTM, STGNN, LR | Best accuracy; non-linear interactions; LSTM dominated; STGNN (now fixed) still trails RF |
 | Feature set | `with_pollutants` (13) | diffusion9 / base | Ablation showed a small but real RF lift from gases (with diffusion) |
 | Dataset | Multi-station (3) | Single-station | Enables diffusion features + neighbour recovery |
 | Train/test split | 70/15/15 chronological | Random shuffle | Prevents temporal leakage; mirrors production |
@@ -566,8 +564,9 @@ The inference consumer and API then load the new `active_model.pkl` automaticall
 
 ## 13. Known Limitations & Honest Caveats (good to pre-empt in Q&A)
 
-- **STGNN is broken at +2h/+3h** — a real, diagnosed finding (replicated-node graph + split-index
-  misalignment), not deployed. Fixing it needs neighbour PM2.5 columns in the training frame.
+- **STGNN was broken (R² ≈ −2.8), now fixed** (0.865 / 0.767 / 0.615) via real per-station nodes + split/
+  scaler fixes + gradient clipping & early stopping. Still trails RF, so RF stays deployed — but it is a
+  valid model now, not a broken one.
 - **Python 3.13 segfault** loading the full ML stack — the model-serving tier must run on 3.11.
 - **Co-pollutant lift is marginal** (RF only, +0.003–0.004 R²) — kept because it helps slightly and is now
   data-backed, not because it is a big win.
