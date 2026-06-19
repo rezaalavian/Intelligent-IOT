@@ -143,23 +143,33 @@ end-to-end run pending (see §7).
 
 ## 6. How to run end-to-end (local)
 
+**Runtime note (load-bearing):** the consumers/services that **load the ML model** — `inference`,
+`alerts`, and the API — must run on **Python 3.11 with `lightgbm` installed**. Loading the full ML stack
+(TensorFlow + PyTorch + LightGBM) together **segfaults on Python 3.13** (confirmed end-to-end). The
+model-free consumers (`normalizer`, `features`, `live_state`, `sink`) and the producer run fine on the
+py3.13 `.venv`.
+
 ```bash
 docker compose up -d                                  # Kafka, Schema Registry :8081, Flink :8082 (idle)
 python -m infrastructure.kafka.create_topics          # 8 topics
 python -m infrastructure.kafka.register_schemas       # Avro schemas
 export OPENAQ_API_KEY=...                              # required for OpenAQ
-# consumers (separate processes):
+# model-free consumers (py3.13 .venv is fine):
 python -m infrastructure.kafka.consumers.normalizer
-python -m infrastructure.kafka.consumers.features
-python -m infrastructure.kafka.consumers.inference
-python -m infrastructure.kafka.consumers.alerts
+FEATURE_TICK_SECONDS=15 python -m infrastructure.kafka.consumers.features   # 15s tick for demos (default 3600)
 python -m infrastructure.kafka.consumers.live_state
-# producer:
+# model-loading consumers + API (Python 3.11 + lightgbm):
+python3.11 -m infrastructure.kafka.consumers.inference
+python3.11 -m infrastructure.kafka.consumers.alerts
+python3.11 -m uvicorn infrastructure.deployment.app:app
+# producer + dashboard:
 python -m infrastructure.kafka.producers.run_ingestion
-# API + dashboard:
-uvicorn infrastructure.deployment.app:app
 streamlit run infrastructure/deployment/dashboard/streamlit_app.py
 ```
+
+A clean end-to-end run shows topic counts climbing
+`aq.measurements → aq.features → aq.predictions → aq.alerts` with `aq.deadletter` at 0, and
+`GET /live/predictions` returning per-station forecasts.
 
 ---
 
