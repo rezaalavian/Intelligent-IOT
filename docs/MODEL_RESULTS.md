@@ -19,9 +19,11 @@ numbers to use for the report.
 
 | Horizon | Linear Regression | Random Forest | LSTM | STGNN | Historical Avg |
 |---|---|---|---|---|---|
-| **+1 h** | **0.902** / 1.33 / 2.16 | 0.901 / 1.36 / 2.18 | 0.801 / 2.07 / 3.09 | 0.792 / 2.12 / 3.15 | ~0 / 4.90 / 6.91 |
-| **+2 h** | 0.776 / 2.08 / 3.28 | **0.784** / 2.05 / 3.21 | 0.698 / 2.57 / 3.81 | −2.835 / 9.00 / 13.56 | ~0 / 4.91 / 6.92 |
-| **+3 h** | 0.649 / 2.65 / 4.10 | **0.678** / 2.53 / 3.93 | 0.605 / 2.94 / 4.35 | −2.762 / 9.04 / 13.43 | ~0 / 4.91 / 6.92 |
+| **+1 h** | **0.902** / 1.33 / 2.16 | 0.901 / 1.36 / 2.18 | 0.801 / 2.07 / 3.09 | 0.865 / – / 2.53 | ~0 / 4.90 / 6.91 |
+| **+2 h** | 0.776 / 2.08 / 3.28 | **0.784** / 2.05 / 3.21 | 0.698 / 2.57 / 3.81 | 0.767 / – / 3.33 | ~0 / 4.91 / 6.92 |
+| **+3 h** | 0.649 / 2.65 / 4.10 | **0.678** / 2.53 / 3.93 | 0.605 / 2.94 / 4.35 | 0.615 / – / 4.28 | ~0 / 4.91 / 6.92 |
+
+*(STGNN column is the **fixed** model — see "STGNN" section below; original values were −2.835 / −2.762 at +2h/+3h. MAE not re-captured in the targeted fix run.)*
 
 ## Findings
 - **Linear Regression ≈ Random Forest, both best.** RF edges LR slightly at +2 h / +3 h;
@@ -31,13 +33,15 @@ numbers to use for the report.
 - **The wind-aware diffusion features carry real signal** for the tabular models — the
   ablation (`scripts/run_ablation.py`) shows `upwind_pm25` giving a small, consistent lift,
   growing with horizon.
-- **STGNN collapses at +2 h / +3 h** (R² ≈ −2.8, worse than guessing) — see below.
+- **STGNN now works** (0.865 / 0.767 / 0.615) after a two-part fix — competitive with the tabular
+  models but still just behind RF at every horizon. See the STGNN section below.
 
 ## Deployed model
 **Active model = per-horizon Random Forest on `with_pollutants` (13 features)** — test R²
 **0.903 / 0.787 / 0.682** (h1/h2/h3). This supersedes the earlier `composite:h1=lr,h2=rf,h3=rf`
 (9-feature) deployment after the co-pollutant ablation (below) showed RF gains a small,
-consistent lift from the gases. STGNN is excluded because it is broken at the longer horizons.
+consistent lift from the gases. STGNN now trains correctly (see below) but still trails RF at
+every horizon, so RF remains the deployed model.
 
 ### Co-pollutant ablation (NO/NO2/NOx/O3)
 The target station's co-pollutants are now kept in `train.csv` and exposed as the
@@ -54,18 +58,34 @@ The target station's co-pollutants are now kept in `train.csv` and exposed as th
   gases alone (`base+pollutants`) are worse than diffusion alone. Diffusion features dominate.
 - Decision: deploy RF `with_pollutants`; the default `FEATURE_COLS` now includes the gases.
 
-## STGNN: known-broken at h2/h3 (a finding, not deployed)
-- h1 is fine (R² 0.79); **h2/h3 collapse to R² ≈ −2.8** with very large prediction variance.
-- **It is structural, not under-training** — a sweep showed h3 R² stays negative at 5 / 25 / 80
-  epochs (it does not converge). Suspected causes (under investigation): the STGNN graph uses a
-  **fallback with replicated identical node features** (real station coordinates + edges, but
-  every node is the same target window — neighbour PM2.5 columns aren't yet in the training
-  frame), and a likely **train/val/test split-index misalignment** between the per-horizon
-  frame length and the shorter graph-sequence list, which worsens with horizon.
-- **Interpretation for the report:** the diffusion **features** (in LR/RF) work; the STGNN
-  **graph**, in its current single-station-replicated form, does not help and hurts at longer
-  horizons. A real per-station graph needs the backfill to emit neighbour PM2.5 columns
-  (deferred).
+## STGNN: was broken, now fixed (still not deployed — RF wins)
+The STGNN originally collapsed to **R² ≈ −2.8** at +2h/+3h. The cause was two layers of bugs,
+both now fixed; the model trains correctly and is competitive (0.865 / 0.767 / 0.615), just
+behind RF at every horizon.
+
+**Root cause (confirmed in code):**
+1. **Degenerate graph — replicated nodes.** Every graph node carried the *same* target-station
+   window (`scaled_all = {sid: scaled_target ...}`), so the "spatial" graph had no spatial signal.
+   Neighbour PM2.5 columns were not in the training frame.
+2. **Split-index misalignment.** `train_end/val_end` were row indices on the full frame but applied
+   to the shorter graph-sequence list (length `n − lookback − horizon + 1`), shifting the splits and
+   worsening with horizon.
+3. **Training instability.** Even after (1)+(2), some horizons *diverged* (negative **train** R²) —
+   no gradient clipping, no early stopping, fixed 25 epochs at lr 0.002.
+
+**The fix (`models/baselines/train_baselines.py`, `infrastructure/kafka/scripts/backfill_multistation.py`):**
+- The backfill now emits per-neighbour `pm25_<id>` columns; the STGNN branch builds **real per-station
+  nodes** (each node gets its own PM2.5, shared met/wind/diffusion). Tabular models ignore the extra
+  columns via `select_feature_cols`, so they are unaffected.
+- The graph-sequence split is aligned to the tabular row split (offset by `lookback − 1`).
+- The graph scaler is fit on **train rows only** (was fit on all rows — a leak).
+- Training adds **gradient clipping (max-norm 1.0) + early stopping on validation** (patience 10, up to
+  80 epochs, lr 0.001), seeded for reproducibility.
+
+**Result (test R²):** h1 0.865 (train 0.941), h2 0.767 (train 0.872), h3 0.615 (train 0.832) — all
+converge, all positive. **Still below RF** (0.903 / 0.787 / 0.682), so RF stays deployed — but the
+comparison is now fair: the diffusion features carry the signal, and the graph model, once correct, is
+competitive rather than broken.
 
 ## Reproduce (Python 3.11 container — avoids the py3.13 TF+torch+lightgbm segfault)
 ```bash
@@ -83,6 +103,7 @@ docker run --rm -v "$PWD":/app -w /app iiot-train python scripts/train_per_horiz
 The trained pkls match the deploy `scikit-learn==1.5.1` pin (no version skew).
 
 ## Caveats / next
-- STGNN fix is deferred (needs real per-station node features → neighbour PM2.5 columns in the backfill).
+- STGNN is fixed and competitive but still behind RF; further tuning (deeper graph, attention on the
+  temporal axis, neighbour met) could close the gap — optional future work.
 - **Co-pollutants** (NO/NO2/NOx/O3) are now in `train.csv` and deployed (see the ablation
   above); the lift is small. Lag/rolling versions of the gases remain a possible enhancement.

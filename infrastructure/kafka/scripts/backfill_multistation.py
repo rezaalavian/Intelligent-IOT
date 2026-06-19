@@ -56,6 +56,12 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict, target_gases=N
         ]
         diff = diffusion_features(t_lat, t_lon, wind_u, wind_v, neighbors)
         g = gases.get(hour, {})
+        # Per-neighbour PM2.5 columns give the STGNN real per-station node features
+        # (the tabular models ignore them via select_feature_cols).
+        neighbor_pm = {
+            f"pm25_{nid}": float(pm_by_hour.get(nid, {}).get(hour) or 0.0)
+            for nid in neighbor_ids()
+        }
         rows.append({
             "timestamp": hour,
             "temp definition °c": float(met.get("temperature") or 0.0),
@@ -69,6 +75,7 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict, target_gases=N
             "no2": float(g.get("no2") or 0.0),
             "nox": float(g.get("nox") or 0.0),
             "o3": float(g.get("o3") or 0.0),
+            **neighbor_pm,
         })
     return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
 
