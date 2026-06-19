@@ -18,7 +18,7 @@ APIs → Kafka → Feature Engineering → Models → API → Dashboard
 - Expose predictions and alerts through a small API.
 
 ## Current Data Strategy
-- Historical source: `data/raw/RawData.csv`
+- Training source: `data/external/multistation/train.csv` (assembled by `infrastructure/kafka/scripts/backfill_multistation.py` from OpenAQ + the Open-Meteo archive)
 - Live source: 
   - OpenAQ API
   - Environment Canada API
@@ -38,11 +38,11 @@ infrastructure/
     controller.py
     dashboard/
 analytics/
-  flink_jobs/
+  features/
   recovery/
 models/
   baselines/
-  spatiotemporal/
+  predictors.py
   saved_models/
 data/
   raw/
@@ -77,7 +77,7 @@ Outputs:
 
 ## Phase 4 — Recovery
 - Missing data interpolation (temporal + spatial)
-- Kriging / graph-based reconstruction
+- Wind-weighted spatial estimate from neighbour stations, with temporal fallback
 
 ## Phase 5 — Deployment
 - FastAPI inference server
@@ -92,7 +92,7 @@ Outputs:
 conda env create -f environment.yml
 conda activate Intelligent-IOT-blackwell
 ```
-## 2. Start Kafka + Flink (REQUIRED for full system)
+## 2. Start Kafka (REQUIRED for full system)
 
 docker compose up -d
 ### Check:
@@ -110,13 +110,13 @@ python -m uvicorn infrastructure.deployment.app:app --reload --port 8000
 python -m streamlit run infrastructure/deployment/dashboard/streamlit_app.py --server.port 8501
 
 ## Useful Commands
-Clean and relocate the historical dataset:
+Rebuild the multi-station training frame:
 
 ```powershell
-conda run -n Intelligent-IOT python scripts/clean_rawdata.py
+conda run -n Intelligent-IOT python -m infrastructure.kafka.scripts.backfill_multistation --start 2023-07-16
 ```
 
-Run the mock producer against the cleaned historical file:
+Run the mock producer against the training file:
 
 ```powershell
 conda run -n Intelligent-IOT python infrastructure/kafka/scripts/mock_producer.py --limit 5
@@ -125,7 +125,7 @@ conda run -n Intelligent-IOT python infrastructure/kafka/scripts/mock_producer.p
 Run the feature engineering demo:
 
 ```powershell
-conda run -n Intelligent-IOT python -m analytics.flink_jobs.feature_engineering
+conda run -n Intelligent-IOT python -m analytics.features.feature_engineering
 ```
 
 Train the baseline model:
@@ -134,10 +134,10 @@ Train the baseline model:
 conda run -n Intelligent-IOT python -m models.baselines.train_baselines
 ```
 
-Train the spatiotemporal model scaffold:
+Train the STGNN baseline:
 
 ```powershell
-conda run -n Intelligent-IOT python -m models.spatiotemporal.train
+conda run -n Intelligent-IOT python scripts/run_baselines.py --model stgnn
 ```
 
 Start the API:
@@ -169,7 +169,5 @@ conda run -n Intelligent-IOT-blackwell streamlit run infrastructure/deployment/d
 - `docs/PIPELINE_OVERVIEW.md` explains the end-to-end flow.
 - `docs/DATA_GUIDE.md` explains the canonical data source and live ingestion policy.
 
-## Evaluation and CI
-- `evaluation/run_benchmarks.py` measures MAE, RMSE, and inference latency. The benchmark harness also computes R² and saves per-horizon summaries.
-- Additional evaluation metrics available in the `evaluation` suite: early-warning lead time, alert precision/recall/F1 (for threshold-based alarms), calibration scores (CRPS), and throughput/latency under synthetic streaming loads.
+## CI
 - `.github/workflows/ci.yml` runs the smoke tests on every push and pull request.

@@ -6,10 +6,9 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
-from analytics.flink_jobs.adjacency_matrix import compute_adjacency
-from analytics.flink_jobs.feature_engineering import compute_rolling_features, introduce_raw_features
-from analytics.flink_jobs.model_inference import predict_record
-from analytics.recovery.kriging_spatial import spatial_interpolate
+from analytics.features.adjacency_matrix import compute_adjacency
+from analytics.features.feature_engineering import compute_rolling_features, introduce_raw_features
+from analytics.features.model_inference import predict_record
 from infrastructure.deployment.controller import ForecastController
 from infrastructure.kafka.scripts.data_downloader import DEFAULT_KEEP_COLUMNS, clean_raw_data
 from models.model_io import load_model, save_model
@@ -61,12 +60,6 @@ def test_adjacency_matrix_shape():
     winds = np.array([[1.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
     adjacency = compute_adjacency(locations, winds)
     assert adjacency.shape == (3, 3)
-
-
-def test_recovery_fills_missing_values():
-    frame = pd.DataFrame({"timestamp": ["2022-01-01 00:00:00", "2022-01-01 01:00:00"], "city_name": ["Toronto", "Toronto"], "pm2": [1.0, None]})
-    recovered = spatial_interpolate(frame, ["pm2"])
-    assert recovered["pm2"].isna().sum() == 0
 
 
 def test_model_roundtrip_and_controller_alerts(tmp_path: Path):

@@ -1,6 +1,5 @@
 confluent-kafka[avro]==2.5.3
 fastavro==1.10.0
-pykrige==1.7.2
 fastapi==0.112.4
 uvicorn[standard]==0.30.6
 pydantic==2.8.2
@@ -23,6 +22,4 @@ scikit-learn==1.5.1
 lightgbm==4.5.0
 tensorflow==2.17.0
 torch-geometric==2.5.3
-# Apache Flink is an external runtime dependency; install the Flink distribution separately
-# or use the local offline feature-engineering stubs in analytics/flink_jobs/ for the demo.
 # PyTorch stack is managed in environment.yml for GPU support and CUDA pinning.

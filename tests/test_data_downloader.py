@@ -1,25 +1,21 @@
 import pandas as pd
+
 from infrastructure.kafka.scripts.data_downloader import DEFAULT_KEEP_COLUMNS, clean_raw_data
 
-def test_clean_raw_data_normalizes_and_derives_wind_components() -> None:
-    frame = pd.DataFrame(
-        {
-            " Timestamp ": ["2024-01-01 00:00:00", "2024-01-01 01:00:00"],
-            "PM2.5": ["12.5", "13.0"],
-            "Wind Speed": ["5", "10"],
-            "Wind Direction": [90, 180],
-            "Station ID": ["A", "A"],
-        }
-    )
 
-    cleaned = clean_raw_data(frame)
+def test_clean_raw_data_keeps_requested_columns(tmp_path) -> None:
+    src = tmp_path / "raw.csv"
+    pd.DataFrame({"timestamp": ["2024-01-01 00:00:00"], "pm2": [12.5], "drop_me": [1]}).to_csv(src, index=False)
 
-    assert "timestamp" in cleaned.columns
-    assert "wind_u" in cleaned.columns
-    assert "wind_v" in cleaned.columns
-    assert len(cleaned) == 2
+    out = clean_raw_data(src, tmp_path / "clean.csv", keep_columns=["timestamp", "pm2", "no2"])
+    cleaned = pd.read_csv(out)
+
+    assert list(cleaned.columns) == ["timestamp", "pm2", "no2"]  # only requested, in order
+    assert cleaned["no2"].isna().all()                           # missing column created empty
+    assert "drop_me" not in cleaned.columns
+    assert len(cleaned) == 1
 
 
 def test_default_keep_columns_contains_core_fields() -> None:
     assert "timestamp" in DEFAULT_KEEP_COLUMNS
-    assert "wind_speed" in DEFAULT_KEEP_COLUMNS
+    assert "pm2" in DEFAULT_KEEP_COLUMNS

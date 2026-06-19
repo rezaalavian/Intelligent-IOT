@@ -64,11 +64,11 @@ Assumption: "completed" means code artifacts or scripts exist and have been run 
     - The canonical schema uses correct sensor names (`pm25`, etc.); reconciling these to the training-data vocabulary (`pm2`, `Temp Definition °C`, wind in tens-of-degrees) is done via a boundary rename layer that is Phase 2 scope.
 
 - Phase 2 — Real-time Feature Engineering (hourly)
-  - Local Flink feature code under `analytics/flink_jobs/feature_engineering.py`: PARTIAL (raw feature introduction exists; rolling/lag transforms remain opt-in helpers and are not yet split into dedicated per-model recipes)
-  - Raw feature introduction and optional transform helpers are consolidated in `analytics/flink_jobs/feature_engineering.py`: COMPLETED
+  - Local Flink feature code under `analytics/features/feature_engineering.py`: PARTIAL (raw feature introduction exists; rolling/lag transforms remain opt-in helpers and are not yet split into dedicated per-model recipes)
+  - Raw feature introduction and optional transform helpers are consolidated in `analytics/features/feature_engineering.py`: COMPLETED
     - Added `introduce_raw_features()` as the default raw hourly entrypoint.
     - Kept `compute_rolling_features()` as an explicit helper for later per-model/per-horizon recipes.
-    - Smoke-tested locally: run `python analytics/flink_jobs/feature_engineering.py` prints raw and rolling feature samples.
+    - Smoke-tested locally: run `python analytics/features/feature_engineering.py` prints raw and rolling feature samples.
   - Hourly aggregation / direction-aware adjacency production: PARTIAL (design and code fragments present; productionized hourly adjacency not confirmed)
 
 - Phase 3 — Spatiotemporal Graph Forecasting Model (hourly) — **PRIMARY MODEL: STGNN**
@@ -157,10 +157,10 @@ Assumption: "completed" means code artifacts or scripts exist and have been run 
 2. Harden Flink feature engineering (high impact, hourly)
      - Smoke-test:
        ```bash
-       python analytics/flink_jobs/feature_engineering.py
+       python analytics/features/feature_engineering.py
        ```
    - Aggregate raw inputs to hourly timestamps and truncate `timestamp` to the hour before feature computation.
-   - Replace repeated DataFrame inserts with `pd.concat` to avoid fragmentation (fix `analytics/flink_jobs/feature_engineering.py`).
+   - Replace repeated DataFrame inserts with `pd.concat` to avoid fragmentation (fix `analytics/features/feature_engineering.py`).
    - Implement efficient rolling/lag generation using hourly windows and test latency on a sample stream.
 3. Complete direction-aware adjacency & model improvements (hourly)
    - Implement meteorology-conditioned adjacency A(t) aggregated hourly in the model input pipeline.
@@ -189,7 +189,7 @@ This project will include a dedicated preprocessing + augmentation solution to i
 - Implementation rules: never leak future information — perform interpolation and augmentation within train-only folds; validate on raw/unaugmented validation/test sets.
 
 Recommended pipeline integration (hourly):
-- Aggregate raw inputs to hourly resolution and implement interpolation hooks in the preprocessing module (`analytics/flink_jobs/feature_engineering.py` or a dedicated preprocessor) with configurable gap thresholds in hours.
+- Aggregate raw inputs to hourly resolution and implement interpolation hooks in the preprocessing module (`analytics/features/feature_engineering.py` or a dedicated preprocessor) with configurable gap thresholds in hours.
 - Apply augmentation during dataset window creation in `models/spatiotemporal/train.py` only to training windows (hourly windows).
 - Add unit tests and ablation experiments to verify augmentation benefits and avoid overfitting.
 
@@ -199,7 +199,7 @@ Quick checklist addition:
 ## Quick actionable checklist (copyable)
 - [ ] Aggregate raw inputs to hourly timestamps and truncate `timestamp` to the hour
 - [ ] Deploy Kafka + Flink test cluster and validate ingestion topics
-- [ ] Fix DataFrame fragmentation in `analytics/flink_jobs/feature_engineering.py`
+- [ ] Fix DataFrame fragmentation in `analytics/features/feature_engineering.py`
 - [ ] Implement direction-aware adjacency in preprocessing pipeline (hourly)
 - [ ] Add kriging-based short-gap imputation (hourly)
 - [ ] Implement graph-reconstruction imputation for long outages (hourly)
@@ -210,7 +210,7 @@ Quick checklist addition:
 - [ ] Run robustness + streaming latency benchmarks on hourly flows
 - [ ] Experiment model variants to target R² 0.8–0.9 (if feasible)
 - [x] Keep raw data downloader and raw hourly data in the repo for local feature/model work
-- [x] Fold notebook graph helpers into `analytics/flink_jobs/feature_engineering.py`
+- [x] Fold notebook graph helpers into `analytics/features/feature_engineering.py`
 - [x] Add missing project requirements for the notebook-style model helpers
 
 ## Notes / Risks
@@ -373,7 +373,7 @@ Or set env var: `$env:IOT_ACTIVE_MODEL = "stgnn"` before starting the API.
 ## Recent changes (2026-06-02)
 
 - **Restored** `infrastructure/kafka/scripts/data_downloader.py` to a richer raw-data cleaner implementing `clean_raw_data(...)` and `DEFAULT_KEEP_COLUMNS` so scripts and tests continue to work with the local historical CSV.
-- **Merged** notebook graph helpers into `analytics/flink_jobs/feature_engineering.py` (wind components, dynamic edge construction, LSTM/graph sequence builders) and made LR/RF/LSTM/STGNN feature pipelines use the notebook-style preprocessing.
+- **Merged** notebook graph helpers into `analytics/features/feature_engineering.py` (wind components, dynamic edge construction, LSTM/graph sequence builders) and made LR/RF/LSTM/STGNN feature pipelines use the notebook-style preprocessing.
 - **Added** STGNN training branch to `models/baselines/train_baselines.py` and registered `stgnn` in feature builders and CLI choices.
 - **Added** `models/baselines/horizon_plus.py` (per-horizon LightGBM / RF / LR fallback) and updated baseline wiring for per-horizon single-output training.
 - **Updated** `requirements.txt` with optional notebook dependencies (e.g., `scikit-learn`, `torch-geometric` entries noted) — install optional packages only as needed for STGNN/LightGBM runs.

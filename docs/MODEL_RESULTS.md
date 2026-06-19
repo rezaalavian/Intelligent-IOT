@@ -9,8 +9,9 @@ numbers to use for the report.
 - **3 stations:** Toronto Downtown `7570` (target) + West `1274950` + North `1274949`
   (East `1210341` dropped — only ~5 days of OpenAQ data). Sources: OpenAQ archive PM2.5,
   Open-Meteo archive meteorology, wind-aware diffusion features.
-- **Features (9):** `temp definition °c`, `dew point definition °c`, `rel hum definition %`,
-  `wind_u`, `wind_v`, `pm25`, `upwind_pm25`, `transport_potential`, `wind_alignment`.
+- **Features:** 9 core — `temp definition °c`, `dew point definition °c`, `rel hum definition %`,
+  `wind_u`, `wind_v`, `pm25`, `upwind_pm25`, `transport_potential`, `wind_alignment` — plus the
+  4 target co-pollutants `no`, `no2`, `nox`, `o3` (default `FEATURE_COLS` is now 13; see ablation).
 - **Target:** PM2.5 (µg/m³), range 0–224 (incl. 2023 wildfire-smoke spikes).
 - **Split:** 70 / 15 / 15 **chronological** (train = earliest, test = most recent ~5–6 months).
 
@@ -33,9 +34,25 @@ numbers to use for the report.
 - **STGNN collapses at +2 h / +3 h** (R² ≈ −2.8, worse than guessing) — see below.
 
 ## Deployed model
-**Active model = `composite:h1=lr, h2=rf, h3=rf`** — the best model per horizon (uses the
-per-horizon model selection). The retrain initially defaulted the active model to STGNN;
-that was corrected because STGNN is broken at the longer horizons.
+**Active model = per-horizon Random Forest on `with_pollutants` (13 features)** — test R²
+**0.903 / 0.787 / 0.682** (h1/h2/h3). This supersedes the earlier `composite:h1=lr,h2=rf,h3=rf`
+(9-feature) deployment after the co-pollutant ablation (below) showed RF gains a small,
+consistent lift from the gases. STGNN is excluded because it is broken at the longer horizons.
+
+### Co-pollutant ablation (NO/NO2/NOx/O3)
+The target station's co-pollutants are now kept in `train.csv` and exposed as the
+`with_pollutants` (diffusion + gases) and `base+pollutants` (base + gases) recipes.
+
+| recipe | LR h1/h2/h3 | RF h1/h2/h3 |
+|---|---|---|
+| diffusion9 (9) | 0.902 / 0.774 / 0.647 | 0.900 / 0.783 / 0.682 |
+| with_pollutants (13) | 0.902 / 0.774 / 0.645 | **0.903 / 0.787 / 0.682** |
+| base+pollutants (10) | 0.901 / 0.771 / 0.643 | 0.899 / 0.769 / 0.654 |
+
+- **LR:** gases give no benefit (≈ identical).
+- **RF:** a small lift at h1/h2 (+0.003 / +0.004 R²), but **only combined with diffusion** —
+  gases alone (`base+pollutants`) are worse than diffusion alone. Diffusion features dominate.
+- Decision: deploy RF `with_pollutants`; the default `FEATURE_COLS` now includes the gases.
 
 ## STGNN: known-broken at h2/h3 (a finding, not deployed)
 - h1 is fine (R² 0.79); **h2/h3 collapse to R² ≈ −2.8** with very large prediction variance.
@@ -59,14 +76,13 @@ docker run --rm -v "$PWD":/app -w /app iiot-train python -W ignore -c \
    train_and_eval('all', Path('data/external/multistation/train.csv'), save_models=True)"
 # feature ablation (feature-set x model x horizon):
 docker run --rm -v "$PWD":/app -w /app iiot-train python scripts/run_ablation.py --models all --out experiments.csv
-# set the deployed active model (best per horizon):
-docker run --rm -v "$PWD":/app -w /app iiot-train python -c \
-  "from models.model_registry import set_active_horizons; set_active_horizons({1:'lr',2:'rf',3:'rf'})"
+# set the deployed active model (per-horizon RF on the co-pollutant recipe):
+docker run --rm -v "$PWD":/app -w /app iiot-train python scripts/train_per_horizon.py \
+  --model rf --map "1=with_pollutants,2=with_pollutants,3=with_pollutants"
 ```
 The trained pkls match the deploy `scikit-learn==1.5.1` pin (no version skew).
 
 ## Caveats / next
 - STGNN fix is deferred (needs real per-station node features → neighbour PM2.5 columns in the backfill).
-- **Co-pollutants** (NO/NO2/NOx/O3) are present in the OpenAQ archive for the target station
-  but not yet in `train.csv` (only PM2.5 was kept) — adding them as target features is a
-  planned enhancement that may improve accuracy and matches the original RawData.csv feature set.
+- **Co-pollutants** (NO/NO2/NOx/O3) are now in `train.csv` and deployed (see the ablation
+  above); the lift is small. Lag/rolling versions of the gases remain a possible enhancement.

@@ -7,7 +7,7 @@ import argparse
 
 p = argparse.ArgumentParser()
 p.add_argument('--model', default='all')
-p.add_argument('--path', type=Path, default=Path('data/raw/Raw_Data.csv'))
+p.add_argument('--path', type=Path, default=Path('data/external/multistation/train.csv'))
 p.add_argument('--epochs', type=int, default=125)
 p.add_argument('--lr', type=float, default=1e-3)
 p.add_argument('--hidden-dim', type=int, default=64)

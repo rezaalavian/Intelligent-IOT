@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
-from analytics.flink_jobs.feature_engineering import compute_dynamic_graph_edges
+from analytics.features.geo import haversine_m, north_east_offsets_m
+from analytics.features.feature_engineering import compute_dynamic_graph_edges
 
 
 def test_haversine_one_degree_latitude():
@@ -47,7 +47,7 @@ def test_edge_distance_accounts_for_curvature():
 
 def test_adjacency_accounts_for_curvature():
     import numpy as np
-    from analytics.flink_jobs.adjacency_matrix import compute_adjacency
+    from analytics.features.adjacency_matrix import compute_adjacency
     locations = np.array([[60.0, 0.0], [61.0, 0.0], [60.0, 1.0]])
     winds = np.zeros((3, 2))
     adjacency = compute_adjacency(locations, winds)

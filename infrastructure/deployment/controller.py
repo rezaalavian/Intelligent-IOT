@@ -160,7 +160,6 @@ def load_controller(
             for candidate in (
                 SAVED_MODELS_DIR / f"{active_key}_bundle.pkl",
                 SAVED_MODELS_DIR / "stgnn_bundle.pkl",
-                SAVED_MODELS_DIR / "demo_model.pkl",
             ):
                 if candidate.exists():
                     loaded = load_model(candidate)

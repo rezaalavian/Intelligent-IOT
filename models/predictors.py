@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 import numpy as np
 
-from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
+from analytics.features.geo import haversine_m, north_east_offsets_m
 
 try:
     import torch

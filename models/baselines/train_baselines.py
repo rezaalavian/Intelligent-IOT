@@ -23,7 +23,7 @@ import pandas as pd
 from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from analytics.flink_jobs.geo import haversine_m, north_east_offsets_m
+from analytics.features.geo import haversine_m, north_east_offsets_m
 from infrastructure.kafka.station_registry import STATIONS as _STATIONS
 from models.forecast_bundle import ForecastBundle
 from models.model_io import save_model
@@ -83,11 +83,12 @@ except Exception:
     USE_PYG = False
 
 
-DEFAULT_PATH = Path("data/raw/Raw_Data.csv")
+DEFAULT_PATH = Path("data/external/multistation/train.csv")
 FEATURE_COLS = [
     "temp definition °c", "dew point definition °c", "rel hum definition %",
     "wind_u", "wind_v", "pm25",
     "upwind_pm25", "transport_potential", "wind_alignment",
+    "no", "no2", "nox", "o3",
 ]
 STATION_COORDS = {s.id: (s.lat, s.lon) for s in _STATIONS.values()}
 NUM_STATIONS = len(STATION_COORDS)
@@ -102,15 +103,10 @@ def select_feature_cols(features, available):
 def _resolve_path(path: Path) -> Path:
     if path.exists():
         return path
-    for candidate in (
-        Path("data/raw/Raw_Data.csv"),
-        Path("data/raw/RawData.csv"),
-        Path("Raw_Data.csv"),
-        Path("RawData.csv"),
-    ):
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(f"Could not find raw data CSV. Tried: {path} and Raw_Data/RawData variants")
+    fallback = Path("data/external/multistation/train.csv")
+    if fallback.exists():
+        return fallback
+    raise FileNotFoundError(f"Could not find training CSV. Tried: {path} and {fallback}")
 
 
 def _load_base_frame(path: Path) -> pd.DataFrame:

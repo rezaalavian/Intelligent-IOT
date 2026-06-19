@@ -7,3 +7,6 @@ RECIPES = {
     "base+transport": _BASE + ["transport_potential"],
     "base+alignment": _BASE + ["wind_alignment"],
 }
+_GASES = ["no", "no2", "nox", "o3"]
+RECIPES["base+pollutants"] = RECIPES["base6"] + _GASES
+RECIPES["with_pollutants"] = RECIPES["diffusion9"] + _GASES
