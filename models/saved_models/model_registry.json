@@ -1,9 +1,9 @@
 {
-  "active_model": "lr",
+  "active_model": "rf",
   "active_horizons": {
-    "1": "lr",
-    "2": "lr",
-    "3": "lr"
+    "1": "rf",
+    "2": "rf",
+    "3": "rf"
   },
   "active_path": "models/saved_models/active_model.pkl",
   "families": {

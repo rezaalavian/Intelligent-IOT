@@ -572,9 +572,8 @@ The inference consumer and API then load the new `active_model.pkl` automaticall
 - **Co-pollutant lift is marginal** (RF only, +0.003–0.004 R²) — kept because it helps slightly and is now
   data-backed, not because it is a big win.
 - **East station dropped** — only 3 of the 4 candidate stations have usable data.
-- **`model_registry.json` label** may read `active_model: lr` while the served bundle in `active_model.pkl`
-  is the per-horizon RF — the controller loads the bundle file directly, so the served model is RF
-  (verified end-to-end); the JSON label is cosmetic.
+- **Model selection:** the controller loads the served bundle directly from `active_model.pkl` (the
+  per-horizon RF). `model_registry.json` is an informational label kept in sync with it.
 
 ---
 
