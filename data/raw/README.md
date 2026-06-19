@@ -1,9 +1,9 @@
 # Raw Data
 
-Place the historical training dataset here.
+The canonical training dataset is the assembled multi-station frame at
+`data/external/multistation/train.csv`, built by
+`infrastructure/kafka/scripts/backfill_multistation.py` from OpenAQ (PM2.5 +
+co-pollutants) and the Open-Meteo archive (meteorology).
 
-Recommended file:
-- `RawData.csv`
-
-This repository uses API-based live ingestion and keeps the raw historical CSV as a
-versioned training seed.
+Live updates come from the API-based Kafka ingestion pipeline; this directory is
+retained only as a placeholder for ad-hoc raw inputs.
