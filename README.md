@@ -163,6 +163,7 @@ conda run -n Intelligent-IOT-blackwell streamlit run infrastructure/deployment/d
 
 ## Documentation
 - **`docs/PROJECT_GUIDE.md` — start here. The complete, presentation-ready guide to the whole project (what, why, how, run/test, code references).**
+- **`docs/DEMO.md` — live-demo runbook (stream recorded data, watch alerts on the dashboard).**
 - `docs/ARCHITECTURE.md` explains the layered architecture and design rationale.
 - `docs/MODEL_RESULTS.md` has the authoritative model metrics and findings.
 - `docs/ENV_SETUP.md` explains the environment.

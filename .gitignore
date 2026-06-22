@@ -19,3 +19,4 @@ data/external/multistation/*
 !data/external/multistation/train.csv
 
 experiments*.csv
+.demo_run/

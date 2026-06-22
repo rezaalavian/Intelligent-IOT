@@ -108,6 +108,10 @@ dashboard: ## Run the Streamlit dashboard
 demo: ## Replay recorded features for a live demo (DEMO_MODE=eval|wildfire, DEMO_INTERVAL=secs)
 	$(PY) -m infrastructure.kafka.scripts.demo_replay --mode $(DEMO_MODE) --interval $(DEMO_INTERVAL)
 
+.PHONY: demo-reset
+demo-reset: ## Clear the live dashboard state for a clean demo board
+	rm -f data/stream/live_state.json
+
 # ---- Training / evaluation ------------------------------------------------
 .PHONY: backfill
 backfill: ## Build multi-station training CSV (START/END overridable)
