@@ -217,25 +217,33 @@ def main() -> None:
     with tab_live:
         st.subheader("Live stream — latest per station")
         base = api_base.rstrip("/")
-        try:
-            import requests
-            preds = requests.get(f"{base}/live/predictions", timeout=5).json()
-            alerts = requests.get(f"{base}/live/alerts", timeout=5).json()
-        except Exception as exc:  # noqa: BLE001
-            st.warning(f"Could not reach API: {exc}")
-            preds, alerts = {}, {}
-        if not preds and not alerts:
-            st.info("No live data yet. Start the pipeline + live_state consumer.")
-        for station_id in sorted(set(preds) | set(alerts)):
-            p = preds.get(station_id, {})
-            a = alerts.get(station_id, {})
-            st.markdown(f"**{station_id}**")
-            cols = st.columns(2)
-            cols[0].metric("Forecast PM2.5 (h1)", p.get("forecast_pm25"))
-            level = a.get("level", "—")
-            cols[1].metric("Alert level", level)
-            if a.get("recommendation"):
-                st.caption(a["recommendation"])
+
+        # Auto-refresh every 2s so the board updates while data streams, with no
+        # manual page reload. Fragment reruns in isolation (Streamlit >= 1.33).
+        @st.fragment(run_every="2s")
+        def _live_board() -> None:
+            try:
+                import requests
+                preds = requests.get(f"{base}/live/predictions", timeout=5).json()
+                alerts = requests.get(f"{base}/live/alerts", timeout=5).json()
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"Could not reach API: {exc}")
+                preds, alerts = {}, {}
+            if not preds and not alerts:
+                st.info("No live data yet. Start the pipeline + live_state consumer.")
+            for station_id in sorted(set(preds) | set(alerts)):
+                p = preds.get(station_id, {})
+                a = alerts.get(station_id, {})
+                st.markdown(f"**{station_id}**")
+                cols = st.columns(2)
+                cols[0].metric("Forecast PM2.5 (h1)", p.get("forecast_pm25"))
+                level = a.get("level", "—")
+                cols[1].metric("Alert level", level)
+                if a.get("recommendation"):
+                    st.caption(a["recommendation"])
+
+        st.caption("Auto-refreshing every 2s.")
+        _live_board()
 
 
 # Streamlit executes this file top-to-bottom on every interaction — do not guard with __main__.
