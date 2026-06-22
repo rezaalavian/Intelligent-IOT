@@ -5,16 +5,23 @@ from concurrent.futures import ThreadPoolExecutor
 
 URL = "http://localhost:8000/predict"
 
-# --------------------------------------------------
-# IMPORTANT:
-# Replace this payload with a REAL payload that your
-# /predict endpoint accepts.
-# --------------------------------------------------
+# A representative 13-feature payload (a moderate-PM2.5 hour from the training set)
+# matching the deployed model's feature schema.
 payload = {
     "features": {
-        "pm25": 12,
-        "temp": 20,
-        "humidity": 50
+        "temp definition °c": 20.3,
+        "dew point definition °c": 16.5,
+        "rel hum definition %": 79.0,
+        "wind_u": 12.267,
+        "wind_v": -3.287,
+        "pm25": 9.0,
+        "upwind_pm25": 17.011,
+        "transport_potential": -8.952,
+        "wind_alignment": -0.848,
+        "no": 0.012,
+        "no2": 0.012,
+        "nox": 0.025,
+        "o3": 0.036,
     }
 }
 

@@ -89,6 +89,22 @@ converge, all positive. **Still below RF** (0.903 / 0.787 / 0.682), so RF stays 
 comparison is now fair: the diffusion features carry the signal, and the graph model, once correct, is
 competitive rather than broken.
 
+## Serving latency / throughput (deployed RF via the FastAPI `/predict` endpoint)
+Measured locally (Apple Silicon, CPU) with `scripts/benchmark_api.py` — 100 requests
+per concurrency level, real 13-feature payload, all 100% success:
+
+| Concurrent users | Avg (ms) | Median | P95 | Max | Throughput (req/s) |
+|---|---|---|---|---|---|
+| 1 | 2.95 | 2.67 | 4.19 | 16.19 | 335 |
+| 5 | 9.81 | 10.0 | 13.86 | 16.50 | 497 |
+| 10 | 12.65 | 11.74 | 20.29 | 25.47 | 743 |
+| 20 | 39.66 | 36.85 | 68.12 | 107.57 | 470 |
+| 50 | 56.86 | 59.60 | 70.08 | 75.73 | 654 |
+
+A single forecast returns in **~3 ms** — six orders of magnitude under the system's
+hourly data cadence, so inference is never the bottleneck. Reproduce: start the API
+(`make PY=python3.11 api`) then `python scripts/benchmark_api.py`.
+
 ## Reproduce (Python 3.11 container — avoids the py3.13 TF+torch+lightgbm segfault)
 ```bash
 docker build -t iiot-train -f Dockerfile.train .
