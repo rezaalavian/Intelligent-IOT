@@ -19,8 +19,10 @@ the line (the predictive-alerting story).
 
 - Docker running.
 - `.env` present (the demo works without `OPENAQ_API_KEY` — it replays recorded data).
-- **Python 3.11** with the project deps + `streamlit` (the model-loading services
-  segfault on 3.13). `python3.11` must be on your PATH.
+- **Python 3.11** for the model-loading services (they segfault on 3.13). `python3.11`
+  must be on your PATH, with: `requirements.txt` deps + `torch`, `lightgbm`,
+  `torch_geometric`, and `streamlit`. Quick check:
+  `python3.11 -c "import torch, lightgbm, torch_geometric, streamlit, confluent_kafka"`.
 
 ## Run it (two commands)
 

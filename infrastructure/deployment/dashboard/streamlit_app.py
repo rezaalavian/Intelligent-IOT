@@ -13,7 +13,8 @@ if str(ROOT) not in sys.path:
 
 METRICS_PATH = ROOT / "models" / "saved_models" / "baseline_metrics.json"
 DEFAULT_API = "http://127.0.0.1:8000"
-MODEL_CHOICES = ["stgnn", "lr", "rf", "lstm", "ha"]
+# rf first: it is the deployed model, so it loads by default (no torch_geometric needed)
+MODEL_CHOICES = ["rf", "lr", "lstm", "stgnn", "ha"]
 
 
 @st.cache_resource
@@ -86,7 +87,8 @@ def main() -> None:
         controller = _get_controller(horizon_tuple)
     except Exception as exc:
         st.error(f"Failed to load models: {exc}")
-        st.info("Train first: `python scripts/run_baselines.py --model all --path data/raw/Raw_Data.csv`")
+        st.info("Train first: `make train` (or `python scripts/run_baselines.py --model all "
+                "--path data/external/multistation/train.csv`). STGNN needs `torch_geometric` installed.")
         return
 
     api_base = st.sidebar.text_input("API base URL", DEFAULT_API)
