@@ -6,6 +6,8 @@ PY := $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python)
 START ?= 2025-05-01
 END ?= 2025-12-31
 TRAIN_CSV ?= data/external/multistation/train.csv
+DEMO_MODE ?= eval
+DEMO_INTERVAL ?= 1.0
 
 .DEFAULT_GOAL := help
 
@@ -101,6 +103,10 @@ api: ## Run the FastAPI service (uvicorn)
 .PHONY: dashboard
 dashboard: ## Run the Streamlit dashboard
 	$(PY) -m streamlit run infrastructure/deployment/dashboard/streamlit_app.py
+
+.PHONY: demo
+demo: ## Replay recorded features for a live demo (DEMO_MODE=eval|wildfire, DEMO_INTERVAL=secs)
+	$(PY) -m infrastructure.kafka.scripts.demo_replay --mode $(DEMO_MODE) --interval $(DEMO_INTERVAL)
 
 # ---- Training / evaluation ------------------------------------------------
 .PHONY: backfill
