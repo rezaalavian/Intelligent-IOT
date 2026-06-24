@@ -59,12 +59,12 @@ def run() -> None:  # pragma: no cover - integration path
     consumer.subscribe([in_topic])
     out = Producer({"bootstrap.servers": cfg.bootstrap_servers})
     dlq = Producer({"bootstrap.servers": cfg.bootstrap_servers})
-    buffer = RollingBuffer(lookback=12)
+    buffer = RollingBuffer(lookback=24)
 
     latest_pm: dict[int, float] = {}
     recent_met: list[dict] = []
     last_seen_hour: dict[int, float] = {}
-    latest_pm_history: deque = deque(maxlen=12)
+    latest_pm_history: deque = deque(maxlen=24)
     tid = target_id()
     target_lat, target_lon = coords(tid)
     last_emit = 0.0

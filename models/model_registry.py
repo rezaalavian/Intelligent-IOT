@@ -27,7 +27,7 @@ def save_model_family(
     horizon_models: dict[int, Any],
     horizon_scalers: dict[int, Any],
     metrics: dict[str, Any] | None = None,
-    lookback: int = 12,
+    lookback: int = 24,
     save_models: bool = True,
 ) -> Path | None:
     """Persist per-horizon and combined bundles for one model family."""
@@ -49,14 +49,30 @@ def save_model_family(
         )
         save_model(bundle, SAVED_MODELS_DIR / f"{model_key}_h{horizon}.pkl")
 
+    # Merge other horizons already present on disk to support parallel training execution
+    merged_models = dict(horizon_models)
+    merged_scalers = dict(horizon_scalers)
+    for h in [1, 2, 3]:
+        if h not in merged_models:
+            try:
+                loaded = load_horizon_bundle(model_key, h)
+                if loaded and loaded.models and h in loaded.models:
+                    merged_models[h] = loaded.models[h]
+                    if loaded.scalers and h in loaded.scalers:
+                        merged_scalers[h] = loaded.scalers[h]
+                    elif loaded.scaler is not None:
+                        merged_scalers[h] = loaded.scaler
+            except Exception:
+                pass
+
     combined = ForecastBundle(
         feature_columns=feature_columns,
         target_column=target_column,
-        horizons=sorted(horizon_models.keys()),
+        horizons=sorted(merged_models.keys()),
         model_type=model_type,
-        scaler=horizon_scalers[min(horizon_scalers.keys())],
-        models=horizon_models,
-        scalers=horizon_scalers,
+        scaler=merged_scalers[min(merged_scalers.keys())],
+        models=merged_models,
+        scalers=merged_scalers,
         metrics=metrics,
         lookback=lookback,
     )
@@ -79,7 +95,7 @@ def load_composite_bundle(horizon_models: dict[int, str]) -> ForecastBundle | No
     merged_scalers: dict[int, Any] = {}
     feature_columns: list[str] = []
     target_column = "pm2"
-    lookback = 12
+    lookback = 24
     model_labels: dict[int, str] = {}
 
     for horizon in sorted(horizon_models.keys()):

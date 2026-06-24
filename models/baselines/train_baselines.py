@@ -21,12 +21,13 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import RobustScaler
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from analytics.features.geo import haversine_m, north_east_offsets_m
 from infrastructure.kafka.station_registry import STATIONS as _STATIONS, target_id as _target_id
 from models.forecast_bundle import ForecastBundle
 from models.model_io import save_model
+from models.feature_recipes import get_features_for_model_and_horizon
 from models.model_registry import (
     ACTIVE_MODEL_KEY,
     default_active_horizons,
@@ -89,10 +90,13 @@ FEATURE_COLS = [
     "wind_u", "wind_v", "pm25",
     "upwind_pm25", "transport_potential", "wind_alignment",
     "no", "no2", "nox", "o3",
+    "hour_sin", "hour_cos", "dow_sin", "dow_cos",
+    "pm25_lag1", "pm25_lag2", "pm25_lag3", "pm25_lag6", "pm25_lag12",
+    "pm25_roll3_mean", "pm25_roll6_mean",
 ]
 STATION_COORDS = {s.id: (s.lat, s.lon) for s in _STATIONS.values()}
 NUM_STATIONS = len(STATION_COORDS)
-LOOKBACK_STEPS = 12
+LOOKBACK_STEPS = 24
 
 
 def select_feature_cols(features, available):
@@ -167,7 +171,88 @@ def _load_base_frame(path: Path) -> pd.DataFrame:
         frame["wind_v"] = 0.0
     # else: wind_u/wind_v already supplied (e.g. multi-station backfill) — keep them
 
+    # 1. Cyclic time features
+    if "datetime_combined" in frame.columns:
+        hour = frame["datetime_combined"].dt.hour
+        dayofweek = frame["datetime_combined"].dt.dayofweek
+        frame["hour_sin"] = np.sin(2 * np.pi * hour / 24)
+        frame["hour_cos"] = np.cos(2 * np.pi * hour / 24)
+        frame["dow_sin"] = np.sin(2 * np.pi * dayofweek / 7)
+        frame["dow_cos"] = np.cos(2 * np.pi * dayofweek / 7)
+    else:
+        frame["hour_sin"] = 0.0
+        frame["hour_cos"] = 0.0
+        frame["dow_sin"] = 0.0
+        frame["dow_cos"] = 0.0
+
+    # 2. Lag and rolling features for pm25
+    if "pm25" in frame.columns:
+        for lag in [1, 2, 3, 6, 12]:
+            frame[f"pm25_lag{lag}"] = frame["pm25"].shift(lag)
+        frame["pm25_roll3_mean"] = frame["pm25"].rolling(window=3, min_periods=1).mean()
+        frame["pm25_roll6_mean"] = frame["pm25"].rolling(window=6, min_periods=1).mean()
+        
+        lag_cols = [f"pm25_lag{lag}" for lag in [1, 2, 3, 6, 12]] + ["pm25_roll3_mean", "pm25_roll6_mean"]
+        for col in lag_cols:
+            frame[col] = frame[col].ffill().bfill().fillna(0.0)
+
     return frame
+
+
+def get_scaled_splits_global(
+    frame: pd.DataFrame,
+    model_key: str,
+    h: int,
+    features: list[str] | None = None,
+    target_col: str = "pm25",
+) -> tuple:
+    feats = select_feature_cols(features, frame.columns) if features else get_features_for_model_and_horizon(model_key, h)
+    # Create a copy of the dataframe
+    df_model = frame.copy()
+    df_model["target_shifted"] = df_model[target_col].shift(-h)
+    df_model = df_model.dropna(subset=feats + ["target_shifted"]).copy()
+    
+    # Save original linear targets before log-transforming features
+    df_model["pm25_linear"] = df_model["pm25"].copy()
+    for sid in STATION_COORDS.keys():
+        col_name = f"pm25_{sid}"
+        if col_name in df_model.columns:
+            df_model[f"{col_name}_linear"] = df_model[col_name].copy()
+    
+    # Apply log-transformation to skewed features (base + lags + rolling + gases)
+    LOG_SKEWED_COLS = ["pm25", "upwind_pm25", "transport_potential", "no", "no2", "nox"]
+    for col in LOG_SKEWED_COLS:
+        if col in df_model.columns:
+            df_model[col] = np.log1p(np.clip(df_model[col], 0.0, None))
+        for lag in [1, 2, 3, 6, 12]:
+            lag_col = f"{col}_lag{lag}"
+            if lag_col in df_model.columns:
+                df_model[lag_col] = np.log1p(np.clip(df_model[lag_col], 0.0, None))
+        for r in [3, 6]:
+            roll_col = f"{col}_roll{r}_mean"
+            if roll_col in df_model.columns:
+                df_model[roll_col] = np.log1p(np.clip(df_model[roll_col], 0.0, None))
+    
+    X_m = df_model[feats].copy()
+    y_m = df_model["target_shifted"].copy()
+    
+    n_m = len(X_m)
+    tr_end, va_end = int(n_m * 0.70), int(n_m * 0.85)
+    
+    X_tr, y_tr = X_m.iloc[:tr_end], y_m.iloc[:tr_end]
+    X_va, y_va = X_m.iloc[tr_end:va_end], y_m.iloc[tr_end:va_end]
+    X_te, y_te = X_m.iloc[va_end:], y_m.iloc[va_end:]
+    
+    y_tr = y_tr.to_numpy().astype(np.float32)
+    y_va = y_va.to_numpy().astype(np.float32)
+    y_te = y_te.to_numpy().astype(np.float32)
+    
+    scaler_m = RobustScaler()
+    X_tr_scaled = scaler_m.fit_transform(X_tr)
+    X_va_scaled = scaler_m.transform(X_va)
+    X_te_scaled = scaler_m.transform(X_te)
+    
+    return X_tr_scaled, X_va_scaled, X_te_scaled, y_tr, y_va, y_te, scaler_m, feats, df_model, tr_end, va_end
 
 
 def compile_metrics(y_true, y_pred):
@@ -219,12 +304,22 @@ def compute_dynamic_graph_edges(wind_u, wind_v, station_coords):
 
 def build_graph_sequences(scaled_data, raw_df, lookback=12, horizon=1):
     station_ids = list(STATION_COORDS.keys())
-    # scaled_data is a dict {station_id: ndarray[T, F]} of per-station scaled features
+    target_sid = _target_id()
     X_graphs = []
     T = len(raw_df)
     for t in range(T - lookback - horizon + 1):
-        target_val = raw_df["target_shifted"].iloc[t + lookback - 1]
-        y_tensor = torch.tensor([target_val] * NUM_STATIONS, dtype=torch.float)
+        # Multi-task targets: predict each station's own future PM2.5 in linear scale (Option B)
+        labels = []
+        for sid in station_ids:
+            col_linear = "pm25_linear" if sid == target_sid else f"pm25_{sid}_linear"
+            if col_linear not in raw_df.columns:
+                col_linear = "pm25" if sid == target_sid else f"pm25_{sid}"
+            val = float(raw_df[col_linear].iloc[t + lookback - 1 + horizon])
+            if col_linear == "pm25" and "pm25_linear" not in raw_df.columns:
+                val = np.expm1(val)
+            labels.append(val)
+        y_tensor = torch.tensor(labels, dtype=torch.float)
+        
         node_feats = [scaled_data[sid][t : t + lookback] for sid in station_ids]
         node_feats = torch.tensor(np.array(node_feats), dtype=torch.float).transpose(1, 2)
         u = raw_df["wind_u"].iloc[t + lookback - 1]
@@ -323,24 +418,28 @@ def train_and_eval(
         df_h["target_shifted"] = df_h[target_col].shift(-h)
         df_h = df_h.dropna(subset=feature_cols + ["target_shifted"]).copy()
 
-        X = df_h[feature_cols].copy()
-        y = df_h["target_shifted"].copy()
+    target_col = "pm25" if "pm25" in frame.columns else "pm2"
 
-        n = len(X)
-        train_end, val_end = int(n * 0.70), int(n * 0.85)
+    results_master: dict[int, dict] = {1: {}, 2: {}, 3: {}}
+    ha_models: dict[int, ConstantPredictor] = {}
+    lr_models: dict[int, Any] = {}
+    rf_models: dict[int, Any] = {}
+    lstm_models: dict[int, LSTMPredictor] = {}
+    stgnn_models: dict[int, STGNNPredictor] = {}
+    ha_scalers: dict[int, RobustScaler] = {}
+    lr_scalers: dict[int, RobustScaler] = {}
+    rf_scalers: dict[int, RobustScaler] = {}
+    lstm_scalers: dict[int, RobustScaler] = {}
+    stgnn_scalers: dict[int, RobustScaler] = {}
 
-        X_train, y_train = X.iloc[:train_end], y.iloc[:train_end]
-        X_val, y_val = X.iloc[train_end:val_end], y.iloc[train_end:val_end]
-        X_test, y_test = X.iloc[val_end:], y.iloc[val_end:]
+    for h in horizons:
+        print("\n" + "=" * 85)
+        print(f" RUNNING BENCHMARK MATRIX FOR HORIZON: +{h}-HOUR WINDOW")
+        print("=" * 85)
 
-        y_train = y_train.to_numpy().astype(np.float32)
-        y_val = y_val.to_numpy().astype(np.float32)
-        y_test = y_test.to_numpy().astype(np.float32)
-
-        scaler = RobustScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_val_scaled = scaler.transform(X_val)
-        X_test_scaled = scaler.transform(X_test)
+        # Scaled split helper function per model family
+        def get_scaled_splits(model_key):
+            return get_scaled_splits_global(frame, model_key, h, features, target_col)
 
         results_master[h] = {}
 
@@ -350,13 +449,14 @@ def train_and_eval(
             else:
                 run = None
             try:
-                ha_mean = float(np.nanmean(y_train))
-                train_m = compile_metrics(y_train, np.full(shape=y_train.shape, fill_value=ha_mean, dtype=np.float32))
-                val_m = compile_metrics(y_val, np.full(shape=y_val.shape, fill_value=ha_mean, dtype=np.float32))
-                test_m = compile_metrics(y_test, np.full(shape=y_test.shape, fill_value=ha_mean, dtype=np.float32))
+                X_tr, X_va, X_te, y_tr, y_va, y_te, ha_scaler, ha_feats, _, _, _ = get_scaled_splits("ha")
+                ha_mean = float(np.nanmean(y_tr))
+                train_m = compile_metrics(y_tr, np.full(shape=y_tr.shape, fill_value=ha_mean, dtype=np.float32))
+                val_m = compile_metrics(y_va, np.full(shape=y_va.shape, fill_value=ha_mean, dtype=np.float32))
+                test_m = compile_metrics(y_te, np.full(shape=y_te.shape, fill_value=ha_mean, dtype=np.float32))
                 results_master[h]["Historical Average"] = {"Train": train_m, "Val": val_m, "Test": test_m}
-                ha_models[h] = ConstantPredictor(ha_mean)
-                ha_scalers[h] = scaler
+                ha_models[h] = ConstantPredictor(ha_mean, log_target=False)
+                ha_scalers[h] = ha_scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -369,46 +469,85 @@ def train_and_eval(
             else:
                 run = None
             try:
-                lr_model = LinearRegression().fit(X_train_scaled, y_train)
-                train_m = compile_metrics(y_train, lr_model.predict(X_train_scaled))
-                val_m = compile_metrics(y_val, lr_model.predict(X_val_scaled))
-                test_m = compile_metrics(y_test, lr_model.predict(X_test_scaled))
+                X_tr, X_va, X_te, y_tr, y_va, y_te, lr_scaler, lr_feats, _, _, _ = get_scaled_splits("lr")
+                if h == 1:
+                    lr_model = LinearRegression().fit(X_tr, y_tr)
+                elif h == 2:
+                    lr_model = Ridge(alpha=5.0).fit(X_tr, y_tr)
+                else:
+                    lr_model = Ridge(alpha=15.0).fit(X_tr, y_tr)
+                train_m = compile_metrics(y_tr, lr_model.predict(X_tr))
+                val_m = compile_metrics(y_va, lr_model.predict(X_va))
+                test_m = compile_metrics(y_te, lr_model.predict(X_te))
                 results_master[h]["Linear Regression"] = {"Train": train_m, "Val": val_m, "Test": test_m}
-                lr_models[h] = TabularPredictor(lr_model, scaler, feature_cols)
-                lr_scalers[h] = scaler
+                lr_models[h] = TabularPredictor(lr_model, lr_scaler, lr_feats, log_target=False)
+                lr_scalers[h] = lr_scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
                 if run is not None:
                     mlflow.end_run()
-
+ 
         if selected in ("rf", "all"):
             if mlflow is not None and log_to_mlflow:
                 run = mlflow.start_run(run_name=f"H{h}_Tree_Regressor")
             else:
                 run = None
             try:
+                X_tr, X_va, X_te, y_tr, y_va, y_te, rf_scaler, rf_feats, _, _, _ = get_scaled_splits("rf")
                 if USE_LGBM:
-                    tree = LGBMRegressor(
-                        n_estimators=200,
-                        learning_rate=0.04,
-                        max_depth=6,
-                        subsample=0.8,
-                        colsample_bytree=0.8,
-                        random_state=seed,
-                        n_jobs=-1,
-                        verbose=-1,
-                    )
-                    tree.fit(X_train_scaled, y_train, eval_set=[(X_val_scaled, y_val)])
+                    if h == 1:
+                        tree = LGBMRegressor(
+                            n_estimators=250,
+                            learning_rate=0.04,
+                            max_depth=6,
+                            subsample=0.8,
+                            colsample_bytree=0.8,
+                            random_state=seed,
+                            n_jobs=-1,
+                            verbose=-1,
+                        )
+                    elif h == 2:
+                        tree = LGBMRegressor(
+                            n_estimators=250,
+                            learning_rate=0.04,
+                            max_depth=6,
+                            subsample=0.8,
+                            colsample_bytree=0.8,
+                            reg_alpha=0.0,
+                            reg_lambda=1.0,
+                            random_state=seed,
+                            n_jobs=-1,
+                            verbose=-1,
+                        )
+                    else:
+                        tree = LGBMRegressor(
+                            n_estimators=200,
+                            learning_rate=0.03,
+                            max_depth=5,
+                            subsample=0.8,
+                            colsample_bytree=0.8,
+                            reg_alpha=0.1,
+                            reg_lambda=2.0,
+                            random_state=seed,
+                            n_jobs=-1,
+                            verbose=-1,
+                        )
+                    tree.fit(X_tr, y_tr, eval_set=[(X_va, y_va)])
                 else:
-                    tree = RandomForestRegressor(n_estimators=40, max_depth=12, random_state=seed, n_jobs=-1)
-                    tree.fit(X_train_scaled, y_train)
-                train_m = compile_metrics(y_train, tree.predict(X_train_scaled))
-                val_m = compile_metrics(y_val, tree.predict(X_val_scaled))
-                test_m = compile_metrics(y_test, tree.predict(X_test_scaled))
+                    if h == 1:
+                        tree = RandomForestRegressor(n_estimators=40, max_depth=12, random_state=seed, n_jobs=-1)
+                    elif h == 2:
+                        tree = RandomForestRegressor(n_estimators=60, max_depth=8, min_samples_leaf=4, random_state=seed, n_jobs=-1)
+                    else:
+                        tree = RandomForestRegressor(n_estimators=80, max_depth=6, min_samples_leaf=8, random_state=seed, n_jobs=-1)
+                    tree.fit(X_tr, y_tr)
+                train_m = compile_metrics(y_tr, tree.predict(X_tr))
+                val_m = compile_metrics(y_va, tree.predict(X_va))
+                test_m = compile_metrics(y_te, tree.predict(X_te))
                 results_master[h]["Gradient Boosting/RF"] = {"Train": train_m, "Val": val_m, "Test": test_m}
-                rf_models[h] = TabularPredictor(tree, scaler, feature_cols)
-                rf_scalers[h] = scaler
+                rf_models[h] = TabularPredictor(tree, rf_scaler, rf_feats, log_target=False)
+                rf_scalers[h] = rf_scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -421,9 +560,10 @@ def train_and_eval(
             else:
                 run = None
             try:
-                X_tr_3d, y_tr_3d = build_lstm_sequences(X_train_scaled, y_train, LOOKBACK_STEPS)
-                X_va_3d, y_va_3d = build_lstm_sequences(X_val_scaled, y_val, LOOKBACK_STEPS)
-                X_te_3d, y_te_3d = build_lstm_sequences(X_test_scaled, y_test, LOOKBACK_STEPS)
+                X_tr, X_va, X_te, y_tr, y_va, y_te, lstm_scaler, lstm_feats, _, _, _ = get_scaled_splits("lstm")
+                X_tr_3d, y_tr_3d = build_lstm_sequences(X_tr, y_tr, LOOKBACK_STEPS)
+                X_va_3d, y_va_3d = build_lstm_sequences(X_va, y_va, LOOKBACK_STEPS)
+                X_te_3d, y_te_3d = build_lstm_sequences(X_te, y_te, LOOKBACK_STEPS)
 
                 if USE_TF:
                     lstm = Sequential(
@@ -443,18 +583,64 @@ def train_and_eval(
                     val_pred = lstm.predict(X_va_3d, verbose=0).flatten()
                     test_pred = lstm.predict(X_te_3d, verbose=0).flatten()
                 else:
-                    tlstm = TorchLSTMRegressor(X_tr_3d.shape[2]).to(device)
-                    opt = torch.optim.Adam(tlstm.parameters(), lr=1e-3)
+                    if h == 1:
+                        dropout_val = 0.2
+                        wd_val = 5e-4
+                        patience_epochs = 12
+                    elif h == 2:
+                        dropout_val = 0.4
+                        wd_val = 5e-3
+                        patience_epochs = 8
+                    else:
+                        dropout_val = 0.5
+                        wd_val = 1e-2
+                        patience_epochs = 6
+
+                    tlstm = TorchLSTMRegressor(X_tr_3d.shape[2], hidden_dim1=32, hidden_dim2=16, dropout=dropout_val).to(device)
+                    opt = torch.optim.Adam(tlstm.parameters(), lr=1e-3, weight_decay=wd_val)
                     loss_fn = nn.MSELoss()
-                    xtr = torch.tensor(X_tr_3d, dtype=torch.float32).to(device)
-                    ytr = torch.tensor(y_tr_3d, dtype=torch.float32).unsqueeze(1).to(device)
-                    for _ in range(epochs):
-                        opt.zero_grad()
-                        loss = loss_fn(tlstm(xtr), ytr)
-                        loss.backward()
-                        opt.step()
+                    
+                    from torch.utils.data import TensorDataset, DataLoader as TorchDataLoader
+                    ds_tr = TensorDataset(
+                        torch.tensor(X_tr_3d, dtype=torch.float32),
+                        torch.tensor(y_tr_3d, dtype=torch.float32).unsqueeze(1)
+                    )
+                    loader_tr = TorchDataLoader(ds_tr, batch_size=64, shuffle=True)
+                    
+                    xva = torch.tensor(X_va_3d, dtype=torch.float32).to(device)
+                    yva = torch.tensor(y_va_3d, dtype=torch.float32).unsqueeze(1).to(device)
+                    
+                    best_val_loss = float("inf")
+                    best_state = None
+                    bad_epochs = 0
+                    
+                    for _epoch in range(epochs):
+                        tlstm.train()
+                        for bx, by in loader_tr:
+                            bx, by = bx.to(device), by.to(device)
+                            opt.zero_grad()
+                            loss = loss_fn(tlstm(bx), by)
+                            loss.backward()
+                            opt.step()
+                            
+                        tlstm.eval()
+                        with torch.no_grad():
+                            val_loss = loss_fn(tlstm(xva), yva).item()
+                        if val_loss < best_val_loss:
+                            best_val_loss = val_loss
+                            best_state = {k: v.detach().clone() for k, v in tlstm.state_dict().items()}
+                            bad_epochs = 0
+                        else:
+                            bad_epochs += 1
+                            if bad_epochs >= patience_epochs:
+                                break
+                                
+                    if best_state is not None:
+                        tlstm.load_state_dict(best_state)
+                        
                     tlstm.eval()
                     with torch.no_grad():
+                        xtr = torch.tensor(X_tr_3d, dtype=torch.float32).to(device)
                         train_pred = tlstm(xtr).detach().cpu().numpy().flatten()
                         val_pred = tlstm(torch.tensor(X_va_3d, dtype=torch.float32).to(device)).detach().cpu().numpy().flatten()
                         test_pred = tlstm(torch.tensor(X_te_3d, dtype=torch.float32).to(device)).detach().cpu().numpy().flatten()
@@ -465,8 +651,8 @@ def train_and_eval(
                 test_m = compile_metrics(y_te_3d, test_pred)
                 results_master[h]["LSTM Sequential"] = {"Train": train_m, "Val": val_m, "Test": test_m}
                 if not USE_TF and TorchLSTMRegressor is not None:
-                    lstm_models[h] = LSTMPredictor(tlstm, scaler, feature_cols, lookback=LOOKBACK_STEPS)
-                    lstm_scalers[h] = scaler
+                    lstm_models[h] = LSTMPredictor(tlstm, lstm_scaler, lstm_feats, lookback=LOOKBACK_STEPS, log_target=False)
+                    lstm_scalers[h] = lstm_scaler
                 if run is not None:
                     _log_test_metrics(test_m, "Test")
             finally:
@@ -479,30 +665,35 @@ def train_and_eval(
             else:
                 run = None
             try:
-                # Real per-station node features: each node gets its OWN pm25 column
-                # (pm25_<neighbour> from the backfill); all other features are the
-                # target-centric met/wind/diffusion/gas values shared across nodes.
-                # Scaler is fit on TRAIN rows only (no leakage), consistent with the
-                # tabular models.
+                X_tr, X_va, X_te, y_tr, y_va, y_te, graph_scaler, stgnn_feats, df_model, tr_end, va_end = get_scaled_splits("stgnn")
+
                 target_sid = _target_id()
-                pm_in_feats = "pm25" in feature_cols
-                graph_scaler = RobustScaler().fit(df_h[feature_cols].iloc[:train_end])
+                pm_in_feats = "pm25" in stgnn_feats
 
                 def _node_matrix(sid):
-                    feat = df_h[feature_cols].copy()
-                    ncol = f"pm25_{sid}"
-                    if pm_in_feats and sid != target_sid and ncol in df_h.columns:
-                        feat["pm25"] = df_h[ncol].values
+                    feat = df_model[stgnn_feats].copy()
+                    if sid != target_sid:
+                        ncol = f"pm25_{sid}"
+                        if ncol in df_model.columns:
+                            feat["pm25"] = np.log1p(np.clip(df_model[ncol].values, 0.0, None))
+                        for col_base, col_neighbor in [
+                            ("temp definition °c", f"temp_{sid}"),
+                            ("dew point definition °c", f"dew_point_{sid}"),
+                            ("rel hum definition %", f"rel_hum_{sid}"),
+                            ("wind_u", f"wind_u_{sid}"),
+                            ("wind_v", f"wind_v_{sid}"),
+                        ]:
+                            if col_neighbor in df_model.columns:
+                                feat[col_base] = df_model[col_neighbor].values
+                    
                     return graph_scaler.transform(feat)
 
                 scaled_all = {sid: _node_matrix(sid) for sid in STATION_COORDS}
-                X_graphs = build_graph_sequences(scaled_all, df_h, lookback=LOOKBACK_STEPS, horizon=h)
-                # Split the graph-sequence list to match the tabular row split: a graph at
-                # index t predicts the row at t+lookback-1, so shift the boundaries by
-                # (lookback-1) to keep each split's prediction row in the same partition.
+                X_graphs = build_graph_sequences(scaled_all, df_model, lookback=LOOKBACK_STEPS, horizon=h)
+                
                 lb = LOOKBACK_STEPS
-                g_tr_end = max(0, train_end - lb + 1)
-                g_va_end = max(g_tr_end, val_end - lb + 1)
+                g_tr_end = max(0, tr_end - lb + 1)
+                g_va_end = max(g_tr_end, va_end - lb + 1)
                 g_train = X_graphs[:g_tr_end]
                 g_val = X_graphs[g_tr_end:g_va_end]
                 g_test = X_graphs[g_va_end:]
@@ -512,10 +703,23 @@ def train_and_eval(
                 loader_te = PyGDataLoader(g_test, batch_size=128, shuffle=False)
 
                 torch.manual_seed(seed)
-                stgnn = AirQualitySTGNN(num_features=len(feature_cols), num_timesteps_input=LOOKBACK_STEPS)
-                opt = torch.optim.AdamW(stgnn.parameters(), lr=0.001, weight_decay=1e-3)
-                criterion = nn.MSELoss()
+                if h == 1:
+                    dropout_val = 0.1
+                    wd_val = 1e-3
+                    patience_val = 10
+                elif h == 2:
+                    dropout_val = 0.15
+                    wd_val = 3e-3
+                    patience_val = 10
+                else:
+                    dropout_val = 0.2
+                    wd_val = 5e-3
+                    patience_val = 10
 
+                stgnn = AirQualitySTGNN(num_features=len(stgnn_feats), num_timesteps_input=LOOKBACK_STEPS, dropout=dropout_val)
+                opt = torch.optim.AdamW(stgnn.parameters(), lr=0.001, weight_decay=wd_val)
+                criterion = nn.MSELoss()
+ 
                 def _val_loss():
                     stgnn.eval()
                     tot, cnt = 0.0, 0
@@ -525,10 +729,8 @@ def train_and_eval(
                             tot += criterion(out, batch.y.flatten()).item() * out.numel()
                             cnt += out.numel()
                     return tot / max(cnt, 1)
-
-                # Gradient clipping + early stopping on validation stabilize training
-                # (without them some horizons diverged — negative train R2).
-                best_val, best_state, patience, bad = float("inf"), None, 10, 0
+ 
+                best_val, best_state, patience, bad = float("inf"), None, patience_val, 0
                 for _epoch in range(80):
                     stgnn.train()
                     for batch in loader_tr:
@@ -555,8 +757,10 @@ def train_and_eval(
                     preds, trues = [], []
                     with torch.no_grad():
                         for batch in loader:
-                            preds.append(stgnn(batch).detach().cpu().numpy())
-                            trues.append(batch.y.flatten().detach().cpu().numpy())
+                            out_numpy = stgnn(batch).detach().cpu().numpy()
+                            y_numpy = batch.y.flatten().detach().cpu().numpy()
+                            preds.append(out_numpy[0::NUM_STATIONS])
+                            trues.append(y_numpy[0::NUM_STATIONS])
                     return np.concatenate(trues), np.concatenate(preds)
 
                 y_tr_true, tr_p = _preds(loader_tr)
@@ -569,8 +773,9 @@ def train_and_eval(
                 stgnn_models[h] = STGNNPredictor(
                     stgnn.cpu(),
                     graph_scaler,
-                    feature_cols,
+                    stgnn_feats,
                     lookback=LOOKBACK_STEPS,
+                    log_target=False,
                 )
                 stgnn_scalers[h] = graph_scaler
                 if run is not None:

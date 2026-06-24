@@ -2,7 +2,7 @@ from collections import deque
 
 
 class RollingBuffer:
-    def __init__(self, lookback: int = 12):
+    def __init__(self, lookback: int = 24):
         self._lookback = lookback
         self._buffers: dict[str, deque] = {}
 

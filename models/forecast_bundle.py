@@ -16,7 +16,7 @@ class ForecastBundle:
     scalers: dict[int, Any] | None = None
     feature_columns_by_horizon: dict[int, list[str]] | None = None
     metrics: dict[str, Any] | None = None
-    lookback: int = 12
+    lookback: int = 24
 
     def _horizon_scaler(self, horizon: int) -> Any:
         if self.scalers and int(horizon) in self.scalers:

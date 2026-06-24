@@ -62,6 +62,18 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict, target_gases=N
             f"pm25_{nid}": float(pm_by_hour.get(nid, {}).get(hour) or 0.0)
             for nid in neighbor_ids()
         }
+        neighbor_weather = {}
+        for nid in neighbor_ids():
+            n_lat, n_lon = coords(nid)
+            n_met = nearest_met(n_lat, n_lon, met_by_hour.get(hour, [])) or {}
+            neighbor_weather[f"temp_{nid}"] = float(n_met.get("temperature") or 0.0)
+            neighbor_weather[f"dew_point_{nid}"] = float(n_met.get("dew_point") or 0.0)
+            neighbor_weather[f"rel_hum_{nid}"] = float(n_met.get("humidity") or 0.0)
+            n_speed = float(n_met.get("wind_speed") or 0.0)
+            n_rad = math.radians(float(n_met.get("wind_dir") or 0.0))
+            neighbor_weather[f"wind_u_{nid}"] = n_speed * math.cos(n_rad)
+            neighbor_weather[f"wind_v_{nid}"] = n_speed * math.sin(n_rad)
+
         rows.append({
             "timestamp": hour,
             "temp definition °c": float(met.get("temperature") or 0.0),
@@ -76,6 +88,7 @@ def build_training_frame(per_station_pm: dict, met_by_hour: dict, target_gases=N
             "nox": float(g.get("nox") or 0.0),
             "o3": float(g.get("o3") or 0.0),
             **neighbor_pm,
+            **neighbor_weather,
         })
     return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
 
@@ -124,16 +137,23 @@ def main() -> None:  # pragma: no cover - network I/O
             "o3":  row.get("o3"),
         }
 
-    # Historical met from the Open-Meteo archive at the target station's coordinates.
-    t_lat, t_lon = coords(target_id())
-    resp = requests.get("https://archive-api.open-meteo.com/v1/archive", params={
-        "latitude": t_lat, "longitude": t_lon,
-        "start_date": args.start, "end_date": args.end,
-        "hourly": "temperature_2m,relativehumidity_2m,dewpoint_2m,windspeed_10m,winddirection_10m",
-        "timezone": "UTC",
-    }, timeout=60)
-    resp.raise_for_status()
-    met_by_hour = parse_open_meteo(resp.json(), t_lat, t_lon)
+    # Historical met from the Open-Meteo archive for each station's coordinates.
+    met_by_hour = {}
+    for sid in STATIONS:
+        s_lat, s_lon = coords(sid)
+        print(f"Fetching historical met for station {sid} at ({s_lat}, {s_lon})...")
+        resp = requests.get("https://archive-api.open-meteo.com/v1/archive", params={
+            "latitude": s_lat, "longitude": s_lon,
+            "start_date": args.start, "end_date": args.end,
+            "hourly": "temperature_2m,relativehumidity_2m,dewpoint_2m,windspeed_10m,winddirection_10m",
+            "timezone": "UTC",
+        }, timeout=60)
+        resp.raise_for_status()
+        station_met = parse_open_meteo(resp.json(), s_lat, s_lon)
+        for hr, records in station_met.items():
+            if hr not in met_by_hour:
+                met_by_hour[hr] = []
+            met_by_hour[hr].extend(records)
 
     frame = build_training_frame(per_station_pm, met_by_hour, target_gases=target_gases)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

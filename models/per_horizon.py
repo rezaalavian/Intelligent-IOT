@@ -10,7 +10,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 def build_per_horizon_bundle(path, model, horizon_features):
     models, scalers, feat_by_h = {}, {}, {}
     target = "pm25"
-    lookback = 12
+    lookback = 24
     for h, cols in sorted(horizon_features.items()):
         train_and_eval(model, Path(path), horizon=h, features=cols, save_models=True)
         fam = load_model(str(_ROOT / "models" / "saved_models" / f"{model}_bundle.pkl"))

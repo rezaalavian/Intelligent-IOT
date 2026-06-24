@@ -9,7 +9,7 @@ def test_partition_path_by_date(tmp_path):
     rec = {"station_id": "s", "source": "openaq",
            "timestamp": datetime(2023, 1, 1, 14, 0, tzinfo=timezone.utc), "pm25": 1.0}
     p = sink.partition_path(str(tmp_path), rec)
-    assert p.endswith("date=2023-01-01/part.parquet")
+    assert p.replace("\\", "/").endswith("date=2023-01-01/part.parquet")
 
 
 def test_append_writes_and_dedups(tmp_path):
