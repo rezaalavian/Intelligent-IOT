@@ -25,20 +25,42 @@
       "model_type": "linear_regression",
       "bundle": "models\\saved_models\\lr_bundle.pkl",
       "horizons": [
-        1
+        1,
+        2,
+        3
       ],
       "per_horizon": [
-        "lr_h1.pkl"
+        "lr_h1.pkl",
+        "lr_h2.pkl",
+        "lr_h3.pkl"
       ]
     },
     "stgnn": {
       "model_type": "stgnn",
       "bundle": "models\\saved_models\\stgnn_bundle.pkl",
       "horizons": [
-        1
+        1,
+        2,
+        3
       ],
       "per_horizon": [
-        "stgnn_h1.pkl"
+        "stgnn_h1.pkl",
+        "stgnn_h2.pkl",
+        "stgnn_h3.pkl"
+      ]
+    },
+    "rf": {
+      "model_type": "gradient_boosting_rf",
+      "bundle": "models\\saved_models\\rf_bundle.pkl",
+      "horizons": [
+        1,
+        2,
+        3
+      ],
+      "per_horizon": [
+        "rf_h1.pkl",
+        "rf_h2.pkl",
+        "rf_h3.pkl"
       ]
     }
   }
