@@ -105,6 +105,16 @@ A single forecast returns in **~3 ms** — six orders of magnitude under the sys
 hourly data cadence, so inference is never the bottleneck. Reproduce: start the API
 (`make PY=python3.11 api`) then `python scripts/benchmark_api.py`.
 
+### Streaming hop latency (`aq.features` → `aq.alerts`, inference + alert hops)
+Measured with `scripts/benchmark_pipeline.py` against the live stack (stamp a feature
+record, time until its alert lands): **median ≈ 75–240 ms, p95 up to ~1 s** across runs,
+with a ~45–100 ms floor. The compute per hop (Avro decode + RF predict + Avro encode +
+produce) is only single-digit ms — the spread is dominated by the consumers' `poll(1.0)`
+loop granularity (a record arriving just after an empty poll waits up to ~1 s for the
+next cycle), not by work. This is the *processing* latency; end-to-end **data freshness**
+is gated upstream by the deliberate hourly feature tick (`FEATURE_TICK_SECONDS`), by
+design. Reproduce: `scripts/demo_up.sh` then `python -m scripts.benchmark_pipeline --n 40`.
+
 ## Reproduce (Python 3.11 container — avoids the py3.13 TF+torch+lightgbm segfault)
 ```bash
 docker build -t iiot-train -f Dockerfile.train .
